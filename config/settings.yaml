@@ -1,0 +1,89 @@
+# NetOps Toolkit - 全局配置文件
+# =====================================
+
+app:
+  name: "NetOps Toolkit"
+  version: "1.0.0"
+  description: "网络工程实施及测试工具集"
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  locale: "zh_CN"     # 语言环境
+
+# 网络相关配置
+network:
+  # SSH连接配置
+  ssh_timeout: 30          # SSH连接超时(秒)
+  ssh_banner_timeout: 15   # Banner超时(秒)
+  connect_retry: 3         # 连接重试次数
+  retry_delay: 2           # 重试间隔(秒)
+  default_port: 22         # 默认SSH端口
+  
+  # 并发配置
+  max_workers: 10          # 最大并发工作线程数
+  thread_pool_size: 20     # 线程池大小
+  
+  # Ping配置
+  ping_count: 4            # 默认Ping次数
+  ping_timeout: 2.0        # Ping超时(秒)
+  ping_interval: 0.5       # Ping间隔(秒)
+  
+  # DNS配置
+  dns_servers:             # DNS服务器列表
+    - "8.8.8.8"
+    - "114.114.114.114"
+    - "223.5.5.5"
+  dns_timeout: 3.0         # DNS查询超时(秒)
+
+# 安全配置
+security:
+  encrypt_passwords: true  # 是否加密存储密码
+  use_keyring: false       # 是否使用系统凭据管理器
+  session_timeout: 3600    # 会话超时(秒), 0表示永不超时
+  require_auth: false      # 是否需要身份验证
+  audit_logging: true      # 是否记录审计日志
+
+# 输出配置
+output:
+  reports_dir: "./reports"      # 报告输出目录
+  log_dir: "./logs"             # 日志目录
+  export_format: "json"         # 默认导出格式: json, csv, xlsx
+  save_history: true            # 是否保存历史记录
+  history_size: 100             # 历史记录数量
+  auto_export: false            # 是否自动导出结果
+  timestamp_format: "%Y%m%d_%H%M%S"  # 时间戳格式
+
+# UI配置
+ui:
+  theme: "default"         # 主题: default, dark, light
+  show_banner: true        # 是否显示欢迎横幅
+  show_tips: true          # 是否显示操作提示
+  page_size: 20            # 分页大小
+  confirm_dangerous: true  # 危险操作是否需要确认
+  animation: true          # 是否启用动画效果
+
+# 日志配置
+logging:
+  rotation: "10 MB"        # 日志滚动策略
+  retention: "30 days"     # 日志保留时间
+  compression: "zip"       # 压缩格式: zip, gz, bz2, xz
+  backtrace: true          # 是否记录回溯信息
+  diagnose: true           # 是否记录诊断信息
+
+# 插件配置
+plugins:
+  auto_load: true          # 是否自动加载插件
+  enabled_plugins:         # 启用的插件列表 (空表示全部启用)
+    - "ping"
+    - "traceroute"
+    - "ssh_batch"
+    - "config_backup"
+    - "port_scan"
+    - "speedtest"
+  disabled_plugins: []     # 禁用的插件列表
+
+# 高级配置
+advanced:
+  cache_enabled: true      # 是否启用缓存
+  cache_ttl: 300           # 缓存过期时间(秒)
+  performance_mode: false  # 性能模式(减少输出,提升速度)
+  debug_mode: false        # 调试模式
+  telemetry: false         # 是否发送使用统计

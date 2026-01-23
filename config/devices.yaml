@@ -1,0 +1,122 @@
+# NetOps Toolkit - 设备清单配置
+# =====================================
+# 
+# 支持的厂商类型 (vendor):
+# - cisco_ios, cisco_xe, cisco_nxos, cisco_asa
+# - huawei, huawei_vrp
+# - h3c, h3c_comware
+# - juniper_junos
+# - arista_eos
+# - fortinet_fortios
+# - paloalto_panos
+# - linux
+
+groups:
+  # 核心交换机组
+  core_switches:
+    vendor: "cisco_ios"
+    credentials: "admin_cred"
+    description: "核心交换机组"
+    devices:
+      - name: "SW-CORE-01"
+        ip: "192.168.1.10"
+        port: 22
+        description: "核心交换机1"
+      - name: "SW-CORE-02"
+        ip: "192.168.1.11"
+        port: 22
+        description: "核心交换机2"
+
+  # 接入交换机组
+  access_switches:
+    vendor: "cisco_ios"
+    credentials: "admin_cred"
+    description: "接入层交换机"
+    devices:
+      - name: "SW-ACC-01"
+        ip: "192.168.1.20"
+      - name: "SW-ACC-02"
+        ip: "192.168.1.21"
+      - name: "SW-ACC-03"
+        ip: "192.168.1.22"
+
+  # 边界路由器组
+  edge_routers:
+    vendor: "huawei_vrp"
+    credentials: "router_cred"
+    description: "边界路由器"
+    devices:
+      - name: "R-EDGE-01"
+        ip: "10.0.0.1"
+        port: 22
+        tags: ["production", "critical"]
+      - name: "R-EDGE-02"
+        ip: "10.0.0.2"
+        port: 22
+        tags: ["production", "critical"]
+
+  # 防火墙组
+  firewalls:
+    vendor: "fortinet_fortios"
+    credentials: "fw_cred"
+    description: "边界防火墙"
+    devices:
+      - name: "FW-BORDER-01"
+        ip: "10.0.1.1"
+        port: 22
+        protocol: "ssh"
+
+  # 服务器组 (Linux)
+  servers:
+    vendor: "linux"
+    credentials: "server_cred"
+    description: "应用服务器"
+    devices:
+      - name: "APP-SERVER-01"
+        ip: "172.16.1.10"
+        port: 22
+        os: "ubuntu"
+      - name: "APP-SERVER-02"
+        ip: "172.16.1.11"
+        port: 22
+        os: "centos"
+
+  # 测试环境设备
+  test_devices:
+    vendor: "cisco_ios"
+    credentials: "test_cred"
+    description: "测试环境设备"
+    devices:
+      - name: "TEST-SW-01"
+        ip: "192.168.100.10"
+        port: 22
+      - name: "TEST-R-01"
+        ip: "192.168.100.1"
+        port: 22
+
+# 单独设备配置 (不属于任何组)
+standalone_devices:
+  - name: "MGMT-SW-01"
+    ip: "192.168.0.10"
+    port: 22
+    vendor: "h3c_comware"
+    credentials: "admin_cred"
+    description: "管理网络交换机"
+  
+  - name: "CLOUD-RTR-01"
+    ip: "203.0.113.1"
+    port: 22
+    vendor: "juniper_junos"
+    credentials: "cloud_cred"
+    description: "云端路由器"
+    tags: ["cloud", "public"]
+
+# 设备标签说明
+# tags 可用于筛选和分类:
+# - production: 生产环境
+# - test: 测试环境
+# - critical: 关键设备
+# - backup: 备用设备
+# - cloud: 云端设备
+# - public: 公网设备
+# - private: 内网设备

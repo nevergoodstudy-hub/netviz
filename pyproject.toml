@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netops-toolkit"
+version = "1.0.0"
+description = "网络工程实施及测试工具集 - 面向网络工程师的多功能CLI工具箱"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Network Engineering Team", email = "netops@example.com"}
+]
+keywords = [
+    "network", "automation", "cli", "ssh", "ping", "netmiko",
+    "network-engineering", "diagnostics", "testing"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "rich>=13.7.0",
+    "questionary>=2.0.1",
+    "typer>=0.12.0",
+    "netmiko>=4.3.0",
+    "ping3>=4.0.4",
+    "dnspython>=2.6.0",
+    "textfsm>=1.1.3",
+    "pyyaml>=6.0.1",
+    "cryptography>=42.0.0",
+    "loguru>=0.7.2",
+    "tabulate>=0.9.0",
+]
+
+[project.optional-dependencies]
+full = [
+    "scapy>=2.5.0",
+    "speedtest-cli>=2.1.3",
+    "ntc-templates>=5.0.0",
+    "pandas>=2.2.0",
+    "openpyxl>=3.1.0",
+    "keyring>=25.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[project.scripts]
+netops = "netops_toolkit.cli:app"
+netops-toolkit = "netops_toolkit.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/netops-toolkit/netops-toolkit"
+Documentation = "https://github.com/netops-toolkit/netops-toolkit#readme"
+Repository = "https://github.com/netops-toolkit/netops-toolkit"
+Issues = "https://github.com/netops-toolkit/netops-toolkit/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["netops_toolkit*"]
+
+[tool.setuptools.package-data]
+netops_toolkit = ["*.yaml", "templates/*.textfsm"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I", "N", "D", "UP"]
+ignore = ["D100", "D104", "D107"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=netops_toolkit --cov-report=term-missing"
