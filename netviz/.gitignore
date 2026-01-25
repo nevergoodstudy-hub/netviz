@@ -1,0 +1,79 @@
+# ==================== Dependencies ====================
+node_modules/
+.pnpm-store/
+
+# ==================== Build outputs ====================
+dist/
+build/
+*.egg-info/
+*.egg
+*.whl
+
+# ==================== Python ====================
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ==================== Tauri ====================
+src-tauri/target/
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.app
+src-tauri/binaries/netviz-backend*
+
+# ==================== Environment & Secrets ====================
+.env
+.env.local
+.env.*.local
+backend/.env
+*.pem
+*.key
+
+# ==================== IDE & Editor ====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==================== Logs ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==================== Data & Uploads ====================
+backend/data/
+data/
+*.pcap
+*.pcapng
+*.db
+*.sqlite
+
+# ==================== GeoIP databases ====================
+backend/data/geoip/
+*.mmdb
+
+# ==================== Testing ====================
+coverage/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ==================== Misc ====================
+*.bak
+*.tmp
+*.temp
+.cache/
