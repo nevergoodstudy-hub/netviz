@@ -41,6 +41,26 @@
 - **IP地址转换** - 十进制/二进制/十六进制
 - **HTTP调试** - API请求测试
 
+## 💻 CLI命令概览
+
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `ping` | Ping连通性测试 | `netops ping 192.168.1.1 -c 4` |
+| `traceroute` | 路由追踪 | `netops traceroute 8.8.8.8` |
+| `dns` | DNS查询 | `netops dns www.baidu.com -t MX` |
+| `scan` | 端口扫描 | `netops scan 192.168.1.1 -p 80,443` |
+| `arp-scan` | ARP主机发现 | `netops arp-scan 192.168.1.0/24` |
+| `ssh-batch` | SSH批量执行 | `netops ssh-batch -g switches -c "show ver"` |
+| `config-backup` | 配置备份 | `netops config-backup -g routers` |
+| `config-diff` | 配置对比 | `netops config-diff file1.txt file2.txt` |
+| `quality` | 网络质量测试 | `netops quality 8.8.8.8 -c 50` |
+| `speedtest` | 带宽测速 | `netops speedtest` |
+| `subnet` | 子网计算器 | `netops subnet 192.168.1.0/24` |
+| `ip-convert` | IP格式转换 | `netops ip-convert 192.168.1.1` |
+| `mac-lookup` | MAC地址查询 | `netops mac-lookup 00:0C:29:12:34:56` |
+| `http` | HTTP调试 | `netops http https://api.example.com` |
+| `whois` | WHOIS查询 | `netops whois baidu.com` |
+
 ## 📦 安装
 
 ### 方式1: 从源码安装
@@ -80,13 +100,33 @@ python -m netops_toolkit
 ### 命令行模式
 ```powershell
 # Ping测试
-netops ping 192.168.1.1
+netops ping 192.168.1.1 -c 4
+netops ping 192.168.1.0/24 -o results.json  # CIDR批量+导出
 
-# 批量Ping
-netops ping --targets 192.168.1.1,192.168.1.2,192.168.1.3
+# DNS查询
+netops dns www.baidu.com
+netops dns baidu.com -t MX
 
-# SSH批量命令执行
-netops ssh-batch --group core_switches --command "show version"
+# 网络质量测试
+netops quality 8.8.8.8 -c 50
+
+# 端口扫描
+netops scan 192.168.1.1 -p 1-1000
+
+# SSH批量执行
+netops ssh-batch -t 192.168.1.1 -c "show version" -u admin -p password
+
+# 配置备份
+netops config-backup -g core_switches -d ./backups
+
+# 子网计算
+netops subnet 10.0.0.0/8
+
+# IP转换
+netops ip-convert 3232235777
+
+# MAC查询
+netops mac-lookup 00:0C:29:12:34:56
 ```
 
 ## ⚙️ 配置
@@ -169,13 +209,64 @@ result = plugin.run(
 - [API参考](docs/api_reference.md)
 - [常见问题](docs/faq.md)
 
-## 🗺️ 路线图
+## 🗓️ 路线图
 
 - [x] v1.0 - 核心框架与基础插件
+- [x] v1.1 - 完整插件集 (15个插件)
+- [x] v1.2 - **TUI 界面升级** (基于 Textual 框架)
 - [ ] v1.5 - Web UI界面
 - [ ] v2.0 - Ansible集成
 - [ ] v2.5 - SNMP监控
 - [ ] v3.0 - AI故障预测
+
+## 🆕 v1.3 更新日志 (2026-01-29)
+
+### 系统信息检测 & 设置功能
+本版本添加了系统信息自动检测和可视化设置管理功能。
+
+**新特性：**
+- 💻 **系统信息检测** - 自动识别 OS、CPU、内存、网络接口、Python 环境
+- 🌐 **网络接口详情** - 显示 IP/MAC/MTU/状态
+- ⚙️ **TUI 设置屏幕** - 选项卡式界面：系统信息/网络接口/应用配置/关于
+- 📝 **配置编辑** - TUI 中直接修改和保存配置
+- 🔄 **实时刷新** - 系统信息一键刷新
+
+**新增文件：**
+- `netops_toolkit/core/system_info.py` - 系统信息检测模块
+- `netops_toolkit/tui/screens/settings_screen.py` - 设置屏幕 TUI
+
+---
+
+## 🆕 v1.2 更新日志 (2026-01-28)
+
+### TUI 界面升级
+本版本将原有 CLI 交互模式升级为基于 **Textual** 框架的现代化 TUI 按钮选择界面。
+
+**新特性：**
+- 🎮 **全新 TUI 界面** - 基于 Textual 框架，支持鼠标点击、键盘导航
+- 🎨 **网格布局菜单** - 6大功能分类按钮，直观易用
+- 📋 **动态参数表单** - 根据插件自动生成输入表单
+- 📊 **实时日志显示** - 执行过程和结果实时展示
+- ⚡ **异步执行** - 插件异步运行，界面不卡顿
+- 🎯 **响应式设计** - 自适应终端窗口大小
+
+**启动方式：**
+```powershell
+# TUI 模式 (默认)
+netops
+python -m netops_toolkit
+
+# 旧版交互式模式
+netops --interactive
+
+# CLI 模式
+netops --cli
+netops ping 192.168.1.1
+```
+
+**新增依赖：**
+- `textual>=0.50.0` - TUI 框架
+- `textual-dev>=1.5.0` - 开发工具
 
 ## 📄 许可证
 
