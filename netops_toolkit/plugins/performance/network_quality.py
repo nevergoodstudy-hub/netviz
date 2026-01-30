@@ -9,7 +9,7 @@ from statistics import mean, stdev
 from datetime import datetime
 import time
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.utils.network_utils import is_valid_ip
 from netops_toolkit.ui.components import create_summary_panel
@@ -38,11 +38,54 @@ class NetworkQualityPlugin(Plugin):
             return False, "ping3库未安装, 请运行: pip install ping3"
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["target"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="target",
+                param_type=str,
+                description="目标IP或主机名",
+                required=True,
+            ),
+            ParamSpec(
+                name="count",
+                param_type=int,
+                description="测试次数",
+                required=False,
+                default=50,
+            ),
+            ParamSpec(
+                name="interval",
+                param_type=float,
+                description="测试间隔(秒)",
+                required=False,
+                default=0.2,
+            ),
+            ParamSpec(
+                name="timeout",
+                param_type=float,
+                description="超时时间(秒)",
+                required=False,
+                default=3.0,
+            ),
+            ParamSpec(
+                name="packet_size",
+                param_type=int,
+                description="包大小(字节)",
+                required=False,
+                default=56,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        target: str,
+        count: int = 50,
+        interval: float = 0.2,
+        timeout: float = 3.0,
+        packet_size: int = 56,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行网络质量测试
         
@@ -53,11 +96,6 @@ class NetworkQualityPlugin(Plugin):
             timeout: 超时时间 (默认3秒)
             packet_size: 包大小字节 (默认56)
         """
-        target = params.get("target")
-        count = params.get("count", 50)
-        interval = params.get("interval", 0.2)
-        timeout = params.get("timeout", 3.0)
-        packet_size = params.get("packet_size", 56)
         
         if not target:
             return PluginResult(

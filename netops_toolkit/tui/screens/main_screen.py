@@ -83,6 +83,12 @@ class MainScreen(Screen):
         ("q", "quit", "退出"),
         ("a", "about", "关于"),
         ("s", "settings", "设置"),
+        ("1", "select_category('diagnostics')", "诊断工具"),
+        ("2", "select_category('scanning')", "网络扫描"),
+        ("3", "select_category('device_mgmt')", "设备管理"),
+        ("4", "select_category('performance')", "性能测试"),
+        ("5", "select_category('utils')", "实用工具"),
+        ("6", "settings", "系统设置"),
     ]
     
     def compose(self) -> ComposeResult:
@@ -122,8 +128,8 @@ class MainScreen(Screen):
                 icon="⚙️",
                 label="系统设置",
                 category="settings",
-                count=0,
-                description="查看和修改配置",
+                count=4,  # 4个选项卡: 系统信息/网络接口/应用配置/关于
+                description="系统信息和应用配置",
                 id="btn-settings",
             )
     
@@ -155,6 +161,21 @@ class MainScreen(Screen):
         """打开设置"""
         from .settings_screen import SettingsScreen
         self.app.push_screen(SettingsScreen())
+    
+    def action_select_category(self, category: str) -> None:
+        """通过数字键快速选择分类"""
+        # 获取分类标签
+        category_labels = {
+            "diagnostics": "诊断工具",
+            "scanning": "网络扫描",
+            "device_mgmt": "设备管理",
+            "performance": "性能测试",
+            "utils": "实用工具",
+        }
+        label = category_labels.get(category, category)
+        
+        from .category_screen import CategoryScreen
+        self.app.push_screen(CategoryScreen(category, label))
 
 
 __all__ = ["MainScreen"]

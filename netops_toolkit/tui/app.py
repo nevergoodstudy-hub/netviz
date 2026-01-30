@@ -87,8 +87,8 @@ class NetOpsApp(App):
     
     def action_show_help(self) -> None:
         """显示帮助信息"""
-        # TODO: 实现帮助屏幕
-        self.notify("帮助功能开发中...", title="提示")
+        from .screens.help_screen import HelpScreen
+        self.push_screen(HelpScreen())
     
     def action_refresh(self) -> None:
         """刷新当前界面"""

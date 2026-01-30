@@ -9,7 +9,7 @@ from pathlib import Path
 import difflib
 from datetime import datetime
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.ui.components import create_summary_panel
 
@@ -29,11 +29,53 @@ class ConfigDiffPlugin(Plugin):
         """验证依赖"""
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["file1", "file2"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="file1",
+                param_type=str,
+                description="第一个配置文件路径",
+                required=True,
+            ),
+            ParamSpec(
+                name="file2",
+                param_type=str,
+                description="第二个配置文件路径",
+                required=True,
+            ),
+            ParamSpec(
+                name="context_lines",
+                param_type=int,
+                description="上下文行数",
+                required=False,
+                default=3,
+            ),
+            ParamSpec(
+                name="ignore_whitespace",
+                param_type=bool,
+                description="忽略空白字符",
+                required=False,
+                default=False,
+            ),
+            ParamSpec(
+                name="ignore_comments",
+                param_type=bool,
+                description="忽略注释行",
+                required=False,
+                default=False,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        file1: str,
+        file2: str,
+        context_lines: int = 3,
+        ignore_whitespace: bool = False,
+        ignore_comments: bool = False,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行配置对比
         
@@ -44,11 +86,6 @@ class ConfigDiffPlugin(Plugin):
             ignore_whitespace: 忽略空白字符 (默认False)
             ignore_comments: 忽略注释行 (默认False)
         """
-        file1 = params.get("file1", "")
-        file2 = params.get("file2", "")
-        context_lines = params.get("context_lines", 3)
-        ignore_whitespace = params.get("ignore_whitespace", False)
-        ignore_comments = params.get("ignore_comments", False)
         
         if not file1 or not file2:
             return PluginResult(

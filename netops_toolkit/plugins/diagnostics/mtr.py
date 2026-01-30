@@ -3,8 +3,10 @@ MTR (My Traceroute) 插件
 
 结合 ping 和 traceroute 功能,实时追踪网络路径,
 显示每跳的丢包率、延迟统计等信息。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
+import re
 import subprocess
 import socket
 import time
@@ -24,6 +26,12 @@ from netops_toolkit.plugins import (
 )
 from netops_toolkit.ui.theme import console
 from netops_toolkit.ui.components import create_result_table, create_summary_panel
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    command_exists,
+    run_command,
+    get_ping_command,
+)
 
 logger = get_logger(__name__)
 
@@ -212,19 +220,16 @@ class MtrPlugin(Plugin):
     
     def _trace_hop(self, target: str, ttl: int, timeout: float) -> Optional[str]:
         """追踪单跳"""
-        import os
+        platform_info = get_platform()
         
         try:
-            if os.name == 'nt':
+            if platform_info.is_windows:
                 # Windows: 使用 ping 的 TTL 选项
                 cmd = ['ping', '-n', '1', '-i', str(ttl), '-w', str(int(timeout * 1000)), target]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 1)
+                result = run_command(cmd, timeout=timeout + 2)
                 
                 # 解析响应
                 output = result.stdout
-                
-                # 查找 "Reply from" 或 "来自" 或 "TTL expired"
-                import re
                 
                 # 匹配IP地址
                 ip_pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
@@ -245,27 +250,40 @@ class MtrPlugin(Plugin):
                         return match.group(1)
                 
             else:
-                # Linux/Mac: 使用 traceroute 单跳
-                import socket
-                
-                # 创建 ICMP socket
-                recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-                recv_socket.settimeout(timeout)
-                
-                send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-                send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-                
-                recv_socket.bind(("", 33434))
-                send_socket.sendto(b"", (target, 33434 + ttl))
-                
+                # Linux/macOS/BSD: 尝试使用原生 socket 或 traceroute
                 try:
-                    data, addr = recv_socket.recvfrom(512)
-                    return addr[0]
-                except socket.timeout:
-                    pass
-                finally:
-                    recv_socket.close()
-                    send_socket.close()
+                    # 尝试使用 raw socket (Linux/BSD, 需要 root 权限)
+                    recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+                    recv_socket.settimeout(timeout)
+                    
+                    send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                    send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+                    
+                    recv_socket.bind(("", 33434))
+                    send_socket.sendto(b"", (target, 33434 + ttl))
+                    
+                    try:
+                        data, addr = recv_socket.recvfrom(512)
+                        return addr[0]
+                    except socket.timeout:
+                        pass
+                    finally:
+                        recv_socket.close()
+                        send_socket.close()
+                except PermissionError:
+                    # 没有 root 权限，使用 traceroute 命令
+                    if platform_info.is_macos:
+                        cmd = ['traceroute', '-m', str(ttl), '-q', '1', '-w', str(int(timeout)), target]
+                    else:
+                        cmd = ['traceroute', '-m', str(ttl), '-q', '1', '-w', str(int(timeout)), target]
+                    
+                    result = run_command(cmd, timeout=timeout + 2)
+                    output = result.stdout
+                    
+                    # 解析最后一跳
+                    ip_match = re.search(r'\((\d+\.\d+\.\d+\.\d+)\)', output)
+                    if ip_match:
+                        return ip_match.group(1)
                     
         except Exception as e:
             logger.debug(f"Trace hop {ttl} failed: {e}")
@@ -274,25 +292,25 @@ class MtrPlugin(Plugin):
     
     def _ping_host(self, host: str, timeout: float) -> Optional[float]:
         """Ping 单个主机,返回延迟(ms)"""
-        import os
+        platform_info = get_platform()
         
         try:
-            if os.name == 'nt':
-                cmd = ['ping', '-n', '1', '-w', str(int(timeout * 1000)), host]
-            else:
-                cmd = ['ping', '-c', '1', '-W', str(int(timeout)), host]
+            cmd = get_ping_command(host, count=1, timeout=timeout)
             
             start = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 1)
+            result = run_command(cmd, timeout=timeout + 2)
             
             if result.returncode == 0:
                 # 解析延迟
-                import re
                 output = result.stdout
                 
-                # Windows: time=XXms 或 时间=XXms
-                # Linux: time=XX.X ms
-                match = re.search(r'[时间|time][=<](\d+\.?\d*)\s*m?s', output, re.IGNORECASE)
+                if platform_info.is_windows:
+                    # Windows: time=XXms 或 时间=XXms
+                    match = re.search(r'[时间time][=<](\d+)\s*m?s', output, re.IGNORECASE)
+                else:
+                    # Linux/macOS/BSD: time=XX.X ms
+                    match = re.search(r'time=(\d+\.?\d*)\s*ms', output, re.IGNORECASE)
+                
                 if match:
                     return float(match.group(1))
                 

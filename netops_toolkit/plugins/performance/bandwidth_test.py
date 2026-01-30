@@ -10,7 +10,7 @@ import subprocess
 import json
 import re
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.ui.components import create_summary_panel
 
@@ -30,7 +30,7 @@ class BandwidthTestPlugin(Plugin):
         """验证speedtest-cli是否可用"""
         try:
             result = subprocess.run(
-                ["speedtest", "--version"],
+                ["speedtest-cli", "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -44,11 +44,39 @@ class BandwidthTestPlugin(Plugin):
         except Exception as e:
             return False, f"speedtest-cli检查失败: {e}"
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return []  # 无必需参数
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="server_id",
+                param_type=str,
+                description="测速服务器ID (可选)",
+                required=False,
+                default=None,
+            ),
+            ParamSpec(
+                name="timeout",
+                param_type=int,
+                description="超时时间(秒)",
+                required=False,
+                default=60,
+            ),
+            ParamSpec(
+                name="simple",
+                param_type=bool,
+                description="简化输出",
+                required=False,
+                default=False,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        server_id: Optional[str] = None,
+        timeout: int = 60,
+        simple: bool = False,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行带宽测速
         
@@ -57,11 +85,17 @@ class BandwidthTestPlugin(Plugin):
             timeout: 测试超时时间秒 (默认60)
             simple: 简化输出 (默认False)
         """
-        server_id = params.get("server_id")
-        timeout = params.get("timeout", 60)
-        simple = params.get("simple", False)
         
         logger.info("开始带宽测速测试")
+        
+        # 先检查依赖
+        dep_ok, dep_msg = self.validate_dependencies()
+        if not dep_ok:
+            return PluginResult(
+                status=ResultStatus.FAILED,
+                message=dep_msg or "speedtest-cli未安装, 请运行: pip install speedtest-cli",
+                data={"install_hint": "pip install speedtest-cli"}
+            )
         
         from netops_toolkit.ui.theme import console
         console.print("[cyan]正在选择最佳服务器...[/cyan]")
@@ -102,7 +136,7 @@ class BandwidthTestPlugin(Plugin):
         """执行speedtest测试"""
         try:
             # 构建命令
-            cmd = ["speedtest", "--json"]
+            cmd = ["speedtest-cli", "--json"]
             if server_id:
                 cmd.extend(["--server", str(server_id)])
             
@@ -150,6 +184,11 @@ class BandwidthTestPlugin(Plugin):
                 "timestamp": data["timestamp"],
             }
             
+        except FileNotFoundError:
+            return {
+                "success": False,
+                "error": "speedtest-cli未安装, 请运行: pip install speedtest-cli",
+            }
         except subprocess.TimeoutExpired:
             return {
                 "success": False,
@@ -164,6 +203,18 @@ class BandwidthTestPlugin(Plugin):
             return {
                 "success": False,
                 "error": f"结果格式错误,缺少字段: {e}",
+            }
+        except OSError as e:
+            # Windows 上可能抛出 OSError 而不是 FileNotFoundError
+            if getattr(e, 'winerror', None) == 2 or e.errno == 2:  # ERROR_FILE_NOT_FOUND
+                return {
+                    "success": False,
+                    "error": "speedtest-cli未安装, 请运行: pip install speedtest-cli",
+                }
+            logger.error(f"测速失败: {e}")
+            return {
+                "success": False,
+                "error": str(e),
             }
         except Exception as e:
             logger.error(f"测速失败: {e}")
@@ -289,7 +340,7 @@ def list_servers(timeout: int = 30) -> List[Dict[str, Any]]:
     """
     try:
         result = subprocess.run(
-            ["speedtest", "--list"],
+            ["speedtest-cli", "--list"],
             capture_output=True,
             text=True,
             timeout=timeout,

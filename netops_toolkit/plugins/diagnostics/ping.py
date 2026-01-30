@@ -2,12 +2,12 @@
 Ping测试插件
 
 提供ICMP Ping功能,支持单目标和批量测试。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
+import re
 import statistics
 import subprocess
-import sys
-import platform
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +30,12 @@ from netops_toolkit.ui.components import (
 )
 from netops_toolkit.utils.network_utils import expand_ip_range, is_valid_ip
 from netops_toolkit.utils.export_utils import save_report
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    get_ping_command,
+    run_command,
+    get_terminal_encoding,
+)
 
 logger = get_logger(__name__)
 
@@ -292,39 +298,49 @@ class PingPlugin(Plugin):
             延迟列表(毫秒)
         """
         latencies = []
+        platform_info = get_platform()
         
-        # 根据操作系统构建命令
-        if platform.system().lower() == "windows":
-            cmd = ["ping", "-n", str(count), "-w", str(int(timeout * 1000)), target]
-        else:
-            cmd = ["ping", "-c", str(count), "-W", str(int(timeout)), target]
+        # 使用跨平台工具获取命令
+        cmd = get_ping_command(target, count, timeout)
         
         try:
-            result = subprocess.run(
+            result = run_command(
                 cmd,
-                capture_output=True,
-                text=True,
                 timeout=timeout * count + 5,
             )
             
             # 解析输出获取延迟
             output = result.stdout
-            
-            if platform.system().lower() == "windows":
-                # Windows: "时间=XXms" 或 "time=XXms"
-                import re
-                matches = re.findall(r'[时间time]=(\d+)ms', output, re.IGNORECASE)
-                latencies = [float(m) for m in matches]
-            else:
-                # Linux/Mac: "time=XX.X ms"
-                import re
-                matches = re.findall(r'time=(\d+\.?\d*)\s*ms', output)
-                latencies = [float(m) for m in matches]
+            latencies = self._parse_ping_output(output, platform_info)
                 
         except subprocess.TimeoutExpired:
             logger.debug(f"系统ping {target} 超时")
         except Exception as e:
             logger.debug(f"系统ping错误: {e}")
+        
+        return latencies
+    
+    def _parse_ping_output(self, output: str, platform_info) -> List[float]:
+        """
+        解析ping输出
+        
+        Args:
+            output: ping命令输出
+            platform_info: 平台信息
+            
+        Returns:
+            延迟列表(毫秒)
+        """
+        latencies = []
+        
+        if platform_info.is_windows:
+            # Windows: "时间=XXms" 或 "time=XXms" 或 "时间<1ms"
+            matches = re.findall(r'[时间time][=<](\d+)\s*m?s', output, re.IGNORECASE)
+            latencies = [float(m) for m in matches]
+        else:
+            # Linux/macOS/BSD: "time=XX.X ms" 或 "time=XX ms"
+            matches = re.findall(r'time=(\d+\.?\d*)\s*ms', output, re.IGNORECASE)
+            latencies = [float(m) for m in matches]
         
         return latencies
     

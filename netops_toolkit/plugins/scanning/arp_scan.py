@@ -2,6 +2,7 @@
 ARP扫描插件
 
 扫描局域网中的活跃主机,获取IP和MAC地址映射。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -11,12 +12,17 @@ import socket
 import struct
 import subprocess
 import re
-import platform
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.utils.network_utils import expand_ip_range, is_valid_network
 from netops_toolkit.ui.components import create_summary_panel
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    get_ping_command,
+    get_arp_command,
+    run_command,
+)
 
 logger = get_logger(__name__)
 
@@ -34,11 +40,38 @@ class ARPScanPlugin(Plugin):
         """验证依赖"""
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["network"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="network",
+                param_type=str,
+                description="网络地址 (CIDR格式,如 192.168.1.0/24)",
+                required=True,
+            ),
+            ParamSpec(
+                name="timeout",
+                param_type=int,
+                description="超时时间(秒)",
+                required=False,
+                default=1,
+            ),
+            ParamSpec(
+                name="max_workers",
+                param_type=int,
+                description="最大并发数",
+                required=False,
+                default=50,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        network: str,
+        timeout: int = 1,
+        max_workers: int = 50,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行ARP扫描
         
@@ -47,9 +80,6 @@ class ARPScanPlugin(Plugin):
             timeout: 超时时间 (默认1秒)
             max_workers: 最大并发数 (默认50)
         """
-        network = params.get("network", "")
-        timeout = params.get("timeout", 1)
-        max_workers = params.get("max_workers", 50)
         
         if not network:
             return PluginResult(
@@ -138,48 +168,32 @@ class ARPScanPlugin(Plugin):
     def _ping_host(self, ip: str, timeout: int) -> bool:
         """Ping主机检查是否存活"""
         try:
-            system = platform.system().lower()
-            
-            if system == "windows":
-                cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), ip]
-            else:
-                cmd = ["ping", "-c", "1", "-W", str(timeout), ip]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=timeout + 2,
-            )
-            
+            cmd = get_ping_command(ip, count=1, timeout=float(timeout))
+            result = run_command(cmd, timeout=timeout + 2)
             return result.returncode == 0
-            
         except Exception:
             return False
     
     def _get_mac_address(self, ip: str) -> Optional[str]:
         """从ARP缓存获取MAC地址"""
         try:
-            system = platform.system().lower()
+            platform_info = get_platform()
+            cmd, cmd_type = get_arp_command(ip)
+            result = run_command(cmd, timeout=5)
             
-            if system == "windows":
-                result = subprocess.run(
-                    ["arp", "-a", ip],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
+            if cmd_type == "windows":
                 # Windows ARP输出格式: 192.168.1.1  00-0c-29-12-34-56  动态
                 match = re.search(r'([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', result.stdout)
                 if match:
                     return match.group(0).upper().replace("-", ":")
+            elif cmd_type == "ip":
+                # Linux ip neigh 输出格式: 192.168.1.1 lladdr 00:0c:29:12:34:56 REACHABLE
+                match = re.search(r'lladdr\s+([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', result.stdout)
+                if match:
+                    mac = match.group(0).replace("lladdr ", "")
+                    return mac.upper()
             else:
-                result = subprocess.run(
-                    ["arp", "-n", ip],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                # Linux ARP输出格式: 192.168.1.1 ether 00:0c:29:12:34:56 C eth0
+                # Linux/BSD arp 输出格式
                 match = re.search(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', result.stdout)
                 if match:
                     return match.group(0).upper()

@@ -88,10 +88,19 @@ class SettingsScreen(Screen):
     
     def on_mount(self) -> None:
         """屏幕挂载时加载数据"""
-        self._load_system_info()
-        self._load_network_info()
-        self._load_config()
-        self._load_about()
+        # 使用 call_later 确保界面完全渲染后再加载数据
+        self.call_later(self._load_all_data)
+    
+    def _load_all_data(self) -> None:
+        """加载所有数据"""
+        try:
+            self._load_system_info()
+            self._load_network_info()
+            self._load_config()
+            self._load_about()
+        except Exception as e:
+            logger.error(f"加载设置数据失败: {e}")
+            self.app.notify(f"加载失败: {e}", title="错误")
     
     def _load_system_info(self) -> None:
         """加载系统信息"""
@@ -245,32 +254,40 @@ class SettingsScreen(Screen):
                     if len(item) == 4:
                         key, label, type_, default = item
                         choices = None
-                    else:
+                    elif len(item) == 5:
                         key, label, type_, default, choices = item
+                    else:
+                        continue  # 跳过无效配置项
                     
                     current_value = group_settings.get(key, default)
                     
-                    with Horizontal(classes="config-row") as row:
-                        row.mount(Label(f"{label}:", classes="config-label"))
-                        
-                        widget_id = f"config-{group_key}-{key}"
-                        
-                        if type_ == "bool":
-                            widget = Switch(value=bool(current_value), id=widget_id)
-                        elif type_ == "choice" and choices:
-                            options = [(c, c) for c in choices]
-                            widget = Select(options, value=str(current_value), id=widget_id)
-                        elif type_ == "int":
-                            widget = Input(value=str(current_value), id=widget_id, type="integer")
-                        elif type_ == "float":
-                            widget = Input(value=str(current_value), id=widget_id, type="number")
-                        else:
-                            widget = Input(value=str(current_value), id=widget_id)
-                        
-                        widget.add_class("config-input")
-                        row.mount(widget)
+                    # 创建行容器
+                    row = Horizontal(classes="config-row")
                     
+                    # 创建标签
+                    row_label = Label(f"{label}:", classes="config-label")
+                    
+                    # 创建输入控件
+                    widget_id = f"config-{group_key}-{key}"
+                    
+                    if type_ == "bool":
+                        widget = Switch(value=bool(current_value), id=widget_id)
+                    elif type_ == "choice" and choices:
+                        options = [(c, c) for c in choices]
+                        widget = Select(options, value=str(current_value), id=widget_id)
+                    elif type_ == "int":
+                        widget = Input(value=str(current_value), id=widget_id, type="integer")
+                    elif type_ == "float":
+                        widget = Input(value=str(current_value), id=widget_id, type="number")
+                    else:
+                        widget = Input(value=str(current_value), id=widget_id)
+                    
+                    widget.add_class("config-input")
+                    
+                    # 挂载到表单
                     form.mount(row)
+                    row.mount(row_label)
+                    row.mount(widget)
                     
         except Exception as e:
             logger.error(f"加载配置失败: {e}")

@@ -9,7 +9,7 @@ import re
 import json
 from pathlib import Path
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.ui.components import create_summary_panel
 
@@ -107,18 +107,29 @@ class MACLookupPlugin(Plugin):
         """验证依赖"""
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["mac"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="mac",
+                param_type=str,
+                description="MAC地址",
+                required=True,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        mac: str,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行MAC地址查询
         
         参数:
             mac: MAC地址
         """
-        mac_input = params.get("mac", "")
+        mac_input = mac
         
         if not mac_input:
             return PluginResult(

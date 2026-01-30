@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 
 class PluginCategory(str, Enum):
@@ -106,13 +106,14 @@ class Plugin(ABC):
     version: str = "1.0.0"
     author: str = "NetOps Team"
     
-    # 插件依赖 (可选)
+    # 插件依赖 (可选) - 格式: [(package_name, import_name), ...] 或 [import_name, ...]
     dependencies: List[str] = []
     
     def __init__(self):
         """初始化插件"""
         self._initialized = False
         self._result: Optional[PluginResult] = None
+        self._missing_deps: List[str] = []  # 缺失的依赖列表
     
     @abstractmethod
     def validate_dependencies(self) -> bool:
@@ -120,11 +121,41 @@ class Plugin(ABC):
         验证插件依赖
         
         检查运行此插件所需的外部依赖是否满足。
+        子类应该调用 _check_imports() 来检查依赖。
         
         Returns:
             True表示依赖满足, False表示缺少依赖
         """
         pass
+    
+    def get_missing_dependencies(self) -> List[str]:
+        """
+        获取缺失的依赖列表
+        
+        Returns:
+            缺失的依赖名称列表
+        """
+        return self._missing_deps.copy()
+    
+    def _check_imports(self, imports: List[str]) -> Tuple[bool, List[str]]:
+        """
+        检查多个导入是否可用
+        
+        Args:
+            imports: 要检查的导入名称列表
+            
+        Returns:
+            (是否全部可用, 缺失的导入列表)
+        """
+        missing = []
+        for imp in imports:
+            try:
+                __import__(imp)
+            except ImportError:
+                missing.append(imp)
+        
+        self._missing_deps = missing
+        return len(missing) == 0, missing
     
     @abstractmethod
     def get_required_params(self) -> List[ParamSpec]:

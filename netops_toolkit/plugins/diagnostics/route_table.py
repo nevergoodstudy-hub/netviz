@@ -2,10 +2,10 @@
 路由表查看插件
 
 显示系统路由表信息。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
 import subprocess
-import platform
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -20,6 +20,11 @@ from netops_toolkit.plugins import (
     register_plugin,
 )
 from netops_toolkit.ui.theme import console
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    get_route_command,
+    run_command,
+)
 from rich.table import Table
 
 logger = get_logger(__name__)
@@ -51,17 +56,17 @@ class RouteTablePlugin(Plugin):
     def run(self, ipv6: bool = False, **kwargs) -> PluginResult:
         """获取路由表"""
         start_time = datetime.now()
-        system = platform.system()
+        platform_info = get_platform()
         
         console.print(f"[cyan]获取系统路由表...[/cyan]")
-        console.print(f"[cyan]操作系统: {system}[/cyan]")
+        console.print(f"[cyan]操作系统: {platform_info.system.title()}[/cyan]")
         console.print(f"[cyan]协议: {'IPv6' if ipv6 else 'IPv4'}[/cyan]\n")
         
         try:
-            if system == "Windows":
+            if platform_info.is_windows:
                 routes = self._get_windows_routes(ipv6)
             else:
-                routes = self._get_unix_routes(ipv6)
+                routes = self._get_unix_routes(ipv6, platform_info)
             
             if routes:
                 console.print(f"[green]✅ 找到 {len(routes)} 条路由[/green]\n")
@@ -121,24 +126,8 @@ class RouteTablePlugin(Plugin):
         routes = []
         
         try:
-            if ipv6:
-                result = subprocess.run(
-                    ["netsh", "interface", "ipv6", "show", "route"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    encoding='gbk',
-                    errors='ignore',
-                )
-            else:
-                result = subprocess.run(
-                    ["route", "print", "-4"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    encoding='gbk',
-                    errors='ignore',
-                )
+            cmd, cmd_type = get_route_command(ipv6)
+            result = run_command(cmd, timeout=10)
             
             if result.returncode != 0:
                 return routes
@@ -194,35 +183,21 @@ class RouteTablePlugin(Plugin):
         
         return routes
     
-    def _get_unix_routes(self, ipv6: bool = False) -> List[Dict[str, Any]]:
-        """获取Unix/Linux/Mac路由表"""
+    def _get_unix_routes(self, ipv6: bool = False, platform_info=None) -> List[Dict[str, Any]]:
+        """获取Unix/Linux/macOS/BSD 路由表"""
         routes = []
-        system = platform.system()
+        
+        if platform_info is None:
+            platform_info = get_platform()
         
         try:
-            if system == "Darwin":  # macOS
-                cmd = ["netstat", "-rn", "-f", "inet6" if ipv6 else "inet"]
-            else:  # Linux
-                if ipv6:
-                    cmd = ["ip", "-6", "route", "show"]
-                else:
-                    cmd = ["ip", "route", "show"]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            cmd, cmd_type = get_route_command(ipv6)
+            result = run_command(cmd, timeout=10)
             
             if result.returncode != 0:
                 # 尝试备用命令
-                result = subprocess.run(
-                    ["netstat", "-rn"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
+                result = run_command(["netstat", "-rn"], timeout=10)
+                cmd_type = "netstat_generic"
             
             if result.returncode != 0:
                 return routes
@@ -230,7 +205,7 @@ class RouteTablePlugin(Plugin):
             output = result.stdout
             
             # 解析 ip route 输出
-            if "ip" in cmd[0]:
+            if cmd_type == "ip":
                 for line in output.split('\n'):
                     line = line.strip()
                     if not line:
@@ -256,7 +231,7 @@ class RouteTablePlugin(Plugin):
                         
                         routes.append(route)
             else:
-                # 解析 netstat -rn 输出
+                # 解析 netstat -rn 输出 (macOS/BSD/Linux)
                 for line in output.split('\n'):
                     line = line.strip()
                     if not line or line.startswith('Routing') or line.startswith('Destination') or line.startswith('Internet'):
@@ -264,7 +239,7 @@ class RouteTablePlugin(Plugin):
                     
                     parts = line.split()
                     if len(parts) >= 4:
-                        if system == "Darwin":
+                        if platform_info.is_macos or platform_info.is_bsd:
                             routes.append({
                                 "destination": parts[0],
                                 "mask": "",

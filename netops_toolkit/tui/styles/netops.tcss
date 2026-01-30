@@ -242,6 +242,65 @@ Screen {
     background: $warning-darken-1;
 }
 
+#export-button {
+    width: 20;
+    margin-right: 2;
+    background: $primary;
+}
+
+#export-button:hover {
+    background: $primary-darken-1;
+}
+
+/* 导出格式选项 */
+#export-options {
+    layout: horizontal;
+    height: 3;
+    margin-top: 1;
+    align: center middle;
+}
+
+#export-options.hidden {
+    display: none;
+}
+
+#export-options Button {
+    width: 15;
+    margin-right: 1;
+}
+
+/* 依赖安装容器 */
+#install-deps-container {
+    layout: horizontal;
+    height: 3;
+    margin-top: 1;
+    align: center middle;
+}
+
+#install-deps-container.hidden {
+    display: none;
+}
+
+#install-deps-btn {
+    width: auto;
+    min-width: 25;
+    background: $warning;
+}
+
+#install-deps-btn:hover {
+    background: $warning-darken-1;
+}
+
+/* 预设按钮样式 */
+#save-preset-btn {
+    width: 20;
+    margin-right: 2;
+}
+
+#preset-row {
+    margin-bottom: 1;
+}
+
 /* ==================== 结果显示区域 ==================== */
 #result-container {
     layout: vertical;
@@ -437,6 +496,44 @@ DataTable > .datatable--cursor {
 
 #back-btn {
     width: 15;
+}
+
+/* ==================== 帮助屏幕样式 ==================== */
+#help-container {
+    width: 80%;
+    height: 80%;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+    margin: 5 10;
+}
+
+#help-title {
+    text-align: center;
+    text-style: bold;
+    padding: 1;
+    border-bottom: solid $primary-background;
+}
+
+#help-content {
+    height: 1fr;
+    padding: 1;
+}
+
+.help-section-title {
+    margin-top: 1;
+    margin-bottom: 0;
+}
+
+.help-content {
+    margin-left: 2;
+    margin-bottom: 1;
+}
+
+#close-help-btn {
+    dock: bottom;
+    width: 100%;
+    margin-top: 1;
 }
 
 /* ==================== 响应式布局 ====================

@@ -2,10 +2,10 @@
 Netstat 插件
 
 查看本机网络连接和监听端口。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
 import subprocess
-import platform
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -20,6 +20,11 @@ from netops_toolkit.plugins import (
     register_plugin,
 )
 from netops_toolkit.ui.theme import console
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    get_netstat_command,
+    run_command,
+)
 from rich.table import Table
 
 logger = get_logger(__name__)
@@ -63,17 +68,17 @@ class NetstatPlugin(Plugin):
     ) -> PluginResult:
         """获取网络连接信息"""
         start_time = datetime.now()
-        system = platform.system()
+        platform_info = get_platform()
         
         console.print(f"[cyan]获取网络连接信息...[/cyan]")
         console.print(f"[cyan]模式: {mode}[/cyan]")
         console.print(f"[cyan]协议: {protocol}[/cyan]\n")
         
         try:
-            if system == "Windows":
+            if platform_info.is_windows:
                 connections = self._get_windows_netstat(mode, protocol)
             else:
-                connections = self._get_unix_netstat(mode, protocol)
+                connections = self._get_unix_netstat(mode, protocol, platform_info)
             
             if connections:
                 # 统计
@@ -170,13 +175,9 @@ class NetstatPlugin(Plugin):
         
         try:
             # Windows netstat -ano
-            result = subprocess.run(
+            result = run_command(
                 ["netstat", "-ano"],
-                capture_output=True,
-                text=True,
                 timeout=30,
-                encoding='gbk',
-                errors='ignore',
             )
             
             if result.returncode != 0:
@@ -243,52 +244,29 @@ class NetstatPlugin(Plugin):
         
         return connections
     
-    def _get_unix_netstat(self, mode: str, protocol: str) -> List[Dict[str, Any]]:
-        """获取Unix/Linux/Mac网络连接"""
+    def _get_unix_netstat(self, mode: str, protocol: str, platform_info=None) -> List[Dict[str, Any]]:
+        """获取Unix/Linux/macOS/BSD 网络连接"""
         connections = []
-        system = platform.system()
+        
+        if platform_info is None:
+            platform_info = get_platform()
         
         try:
-            # 尝试使用 ss 命令 (Linux)
-            if system != "Darwin":
-                try:
-                    cmd = ["ss", "-tuln" if mode == "listen" else "-tun"]
-                    if mode == "all":
-                        cmd = ["ss", "-tuna"]
-                    
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    
-                    if result.returncode == 0:
-                        return self._parse_ss_output(result.stdout, mode, protocol)
-                except FileNotFoundError:
-                    pass
+            # 使用跨平台工具获取命令
+            cmd, cmd_type = get_netstat_command(mode)
             
-            # 使用 netstat
-            if system == "Darwin":
-                cmd = ["netstat", "-an", "-p", "tcp"]
-                if protocol in ("udp", "all"):
-                    cmd = ["netstat", "-an"]
-            else:
-                cmd = ["netstat", "-tuln" if mode == "listen" else "-tun"]
-                if mode == "all":
-                    cmd = ["netstat", "-tuna"]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+            result = run_command(cmd, timeout=30)
             
             if result.returncode != 0:
                 return connections
             
-            return self._parse_netstat_output(result.stdout, mode, protocol, system)
+            # 根据命令类型选择解析器
+            if cmd_type == "ss":
+                return self._parse_ss_output(result.stdout, mode, protocol)
+            elif cmd_type in ("netstat_bsd", "netstat_generic"):
+                return self._parse_netstat_output(result.stdout, mode, protocol, platform_info)
+            else:
+                return self._parse_netstat_output(result.stdout, mode, protocol, platform_info)
             
         except Exception as e:
             logger.error(f"获取Unix netstat失败: {e}")
@@ -338,7 +316,7 @@ class NetstatPlugin(Plugin):
         return connections
     
     def _parse_netstat_output(
-        self, output: str, mode: str, protocol: str, system: str
+        self, output: str, mode: str, protocol: str, platform_info
     ) -> List[Dict[str, Any]]:
         """解析netstat命令输出"""
         connections = []
@@ -361,20 +339,20 @@ class NetstatPlugin(Plugin):
                 if protocol.upper() == "UDP" and not proto.startswith("UDP"):
                     continue
             
-            if system == "Darwin":
-                # macOS格式
+            if platform_info.is_macos or platform_info.is_bsd:
+                # macOS/BSD 格式
                 if proto.startswith("TCP"):
-                    local_addr = parts[3]
-                    remote_addr = parts[4]
+                    local_addr = parts[3] if len(parts) > 3 else ""
+                    remote_addr = parts[4] if len(parts) > 4 else ""
                     state = parts[5] if len(parts) > 5 else ""
                 else:
-                    local_addr = parts[3]
+                    local_addr = parts[3] if len(parts) > 3 else ""
                     remote_addr = parts[4] if len(parts) > 4 else ""
                     state = ""
             else:
-                # Linux格式
-                local_addr = parts[3]
-                remote_addr = parts[4]
+                # Linux 格式
+                local_addr = parts[3] if len(parts) > 3 else ""
+                remote_addr = parts[4] if len(parts) > 4 else ""
                 state = parts[5] if len(parts) > 5 and proto.startswith("TCP") else ""
             
             # 过滤模式

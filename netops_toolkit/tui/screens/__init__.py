@@ -8,10 +8,12 @@ from .main_screen import MainScreen
 from .category_screen import CategoryScreen
 from .plugin_screen import PluginScreen
 from .settings_screen import SettingsScreen
+from .help_screen import HelpScreen
 
 __all__ = [
     "MainScreen",
     "CategoryScreen", 
     "PluginScreen",
     "SettingsScreen",
+    "HelpScreen",
 ]

@@ -9,7 +9,7 @@ from datetime import datetime
 import subprocess
 import re
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.ui.components import create_summary_panel
 
@@ -41,11 +41,30 @@ class WhoisLookupPlugin(Plugin):
             # 有些whois实现不支持--version,尝试其他方法
             return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["target"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="target",
+                param_type=str,
+                description="域名或IP地址",
+                required=True,
+            ),
+            ParamSpec(
+                name="timeout",
+                param_type=int,
+                description="查询超时(秒)",
+                required=False,
+                default=30,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        target: str,
+        timeout: int = 30,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行WHOIS查询
         
@@ -53,8 +72,6 @@ class WhoisLookupPlugin(Plugin):
             target: 域名或IP地址
             timeout: 查询超时 (默认30秒)
         """
-        target = params.get("target", "")
-        timeout = params.get("timeout", 30)
         
         if not target:
             return PluginResult(

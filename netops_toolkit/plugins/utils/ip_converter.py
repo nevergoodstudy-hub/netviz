@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import ipaddress
 import re
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.ui.components import create_summary_panel
 
@@ -28,18 +28,29 @@ class IPConverterPlugin(Plugin):
         """验证依赖"""
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["ip"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="ip",
+                param_type=str,
+                description="IP地址(支持多种输入格式)",
+                required=True,
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        ip: str,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行IP格式转换
         
         参数:
             ip: IP地址(支持多种输入格式)
         """
-        ip_input = params.get("ip", "")
+        ip_input = ip
         
         if not ip_input:
             return PluginResult(

@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import time
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.utils.ssh_utils import SSHConnection, check_netmiko_available
 from netops_toolkit.config.device_inventory import DeviceInventory
@@ -32,11 +32,65 @@ class SSHBatchPlugin(Plugin):
             return False, "Netmiko库未安装, 请运行: pip install netmiko"
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return ["commands"]
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="commands",
+                param_type=str,
+                description="要执行的命令",
+                required=True,
+            ),
+            ParamSpec(
+                name="targets",
+                param_type=str,
+                description="目标设备列表(逗号分隔)",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="group",
+                param_type=str,
+                description="设备组名称",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="username",
+                param_type=str,
+                description="SSH用户名",
+                required=False,
+                default="admin",
+            ),
+            ParamSpec(
+                name="password",
+                param_type=str,
+                description="SSH密码",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="device_type",
+                param_type=str,
+                description="设备类型",
+                required=False,
+                default="cisco_ios",
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        commands: str,
+        targets: str = "",
+        group: str = "",
+        username: str = "admin",
+        password: str = "",
+        device_type: str = "cisco_ios",
+        max_workers: int = 5,
+        timeout: int = 30,
+        config_mode: bool = False,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行SSH批量命令
         
@@ -51,22 +105,14 @@ class SSHBatchPlugin(Plugin):
             timeout: 连接超时 (默认30秒)
             config_mode: 是否使用配置模式执行 (默认False)
         """
-        # 获取参数
-        commands = params.get("commands", [])
-        if isinstance(commands, str):
-            commands = [commands]
+        # 处理命令参数
+        command_list = [c.strip() for c in commands.split(";") if c.strip()] if isinstance(commands, str) else commands
         
-        targets = params.get("targets", [])
-        group = params.get("group")
-        username = params.get("username", "admin")
-        password = params.get("password", "")
-        device_type = params.get("device_type", "cisco_ios")
-        max_workers = params.get("max_workers", 5)
-        timeout = params.get("timeout", 30)
-        config_mode = params.get("config_mode", False)
+        # 处理目标参数
+        target_list = [t.strip() for t in targets.split(",") if t.strip()] if targets else []
         
         # 如果指定了设备组,从设备清单获取设备
-        if group and not targets:
+        if group and not target_list:
             inventory = DeviceInventory()
             devices_info = inventory.get_devices_by_group(group)
             if not devices_info:
@@ -75,33 +121,33 @@ class SSHBatchPlugin(Plugin):
                     message=f"设备组 '{group}' 不存在或为空",
                     data={}
                 )
-            targets = [d.get("host") for d in devices_info if d.get("host")]
+            target_list = [d.get("host") for d in devices_info if d.get("host")]
             # 尝试从设备清单获取凭据
             if devices_info and not password:
                 first_device = devices_info[0]
                 username = first_device.get("username", username)
                 device_type = first_device.get("device_type", device_type)
         
-        if not targets:
+        if not target_list:
             return PluginResult(
                 status=ResultStatus.FAILED,
                 message="未指定目标设备",
                 data={}
             )
         
-        if not commands:
+        if not command_list:
             return PluginResult(
                 status=ResultStatus.FAILED,
                 message="未指定命令",
                 data={}
             )
         
-        logger.info(f"开始对 {len(targets)} 台设备执行 {len(commands)} 条命令")
+        logger.info(f"开始对 {len(target_list)} 台设备执行 {len(command_list)} 条命令")
         
         # 执行批量操作
         results = self._execute_batch(
-            targets=targets,
-            commands=commands,
+            targets=target_list,
+            commands=command_list,
             username=username,
             password=password,
             device_type=device_type,
@@ -120,10 +166,10 @@ class SSHBatchPlugin(Plugin):
             data={
                 "results": results,
                 "summary": {
-                    "total": len(targets),
+                    "total": len(target_list),
                     "success": success_count,
                     "failed": fail_count,
-                    "commands": commands,
+                    "commands": command_list,
                     "timestamp": datetime.now().isoformat(),
                 }
             }

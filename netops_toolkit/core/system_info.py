@@ -2,6 +2,7 @@
 系统信息检测模块
 
 自动识别当前系统配置信息，包括操作系统、硬件、网络接口、Python 环境等。
+支持 Windows、Linux、macOS、FreeBSD、OpenBSD 等多种系统。
 """
 
 import os
@@ -9,6 +10,7 @@ import sys
 import platform
 import socket
 import uuid
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -153,32 +155,94 @@ class SystemDetector:
     
     def _detect_os(self, info: SystemInfo) -> None:
         """检测操作系统信息"""
-        info.os_name = platform.system()  # Windows, Linux, Darwin
+        system = platform.system()  # Windows, Linux, Darwin, FreeBSD, etc.
         info.os_version = platform.version()
         info.os_release = platform.release()
         info.os_arch = platform.machine()
         info.os_platform = platform.platform()
         
         # 获取更友好的 OS 名称
-        if info.os_name == "Windows":
+        if system == "Windows":
             info.os_name = f"Windows {platform.win32_ver()[0]}"
-        elif info.os_name == "Darwin":
+        elif system == "Darwin":
             info.os_name = f"macOS {platform.mac_ver()[0]}"
-        elif info.os_name == "Linux":
-            # 尝试获取发行版信息
+        elif system == "Linux":
+            info.os_name = self._get_linux_distro()
+        elif system == "FreeBSD":
+            info.os_name = f"FreeBSD {info.os_release}"
+        elif system == "OpenBSD":
+            info.os_name = f"OpenBSD {info.os_release}"
+        elif system == "NetBSD":
+            info.os_name = f"NetBSD {info.os_release}"
+        elif system == "SunOS":
+            info.os_name = f"Solaris/SunOS {info.os_release}"
+        elif system == "AIX":
+            info.os_name = f"AIX {info.os_release}"
+        else:
+            info.os_name = f"{system} {info.os_release}"
+    
+    def _get_linux_distro(self) -> str:
+        """获取 Linux 发行版信息"""
+        # 方法1: 使用 distro 库
+        try:
+            import distro
+            name = distro.name(pretty=True)
+            if name:
+                return name
+        except ImportError:
+            pass
+        
+        # 方法2: 读取 /etc/os-release (最标准的方法)
+        try:
+            with open("/etc/os-release") as f:
+                os_info = {}
+                for line in f:
+                    line = line.strip()
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        os_info[key] = value.strip('"')
+                
+                if "PRETTY_NAME" in os_info:
+                    return os_info["PRETTY_NAME"]
+                elif "NAME" in os_info:
+                    version = os_info.get("VERSION", os_info.get("VERSION_ID", ""))
+                    return f"{os_info['NAME']} {version}".strip()
+        except Exception:
+            pass
+        
+        # 方法3: 读取 /etc/lsb-release (Ubuntu 等)
+        try:
+            with open("/etc/lsb-release") as f:
+                for line in f:
+                    if line.startswith("DISTRIB_DESCRIPTION="):
+                        return line.split("=", 1)[1].strip().strip('"')
+        except Exception:
+            pass
+        
+        # 方法4: 检查特定发行版文件
+        distro_files = [
+            ("/etc/redhat-release", None),
+            ("/etc/centos-release", None),
+            ("/etc/fedora-release", None),
+            ("/etc/debian_version", "Debian"),
+            ("/etc/arch-release", "Arch Linux"),
+            ("/etc/gentoo-release", None),
+            ("/etc/SuSE-release", None),
+            ("/etc/slackware-version", None),
+        ]
+        
+        for filepath, prefix in distro_files:
             try:
-                import distro
-                info.os_name = f"{distro.name()} {distro.version()}"
-            except ImportError:
-                # 尝试读取 /etc/os-release
-                try:
-                    with open("/etc/os-release") as f:
-                        for line in f:
-                            if line.startswith("PRETTY_NAME="):
-                                info.os_name = line.split("=")[1].strip().strip('"')
-                                break
-                except Exception:
-                    info.os_name = f"Linux {info.os_release}"
+                with open(filepath) as f:
+                    content = f.read().strip()
+                    if prefix:
+                        return f"{prefix} {content}"
+                    return content
+            except Exception:
+                continue
+        
+        # 方法5: 使用 uname
+        return f"Linux {platform.release()}"
     
     def _detect_host(self, info: SystemInfo) -> None:
         """检测主机信息"""
@@ -197,7 +261,7 @@ class SystemDetector:
     def _detect_hardware(self, info: SystemInfo) -> None:
         """检测硬件信息"""
         # CPU 信息
-        info.cpu_name = platform.processor() or "Unknown CPU"
+        info.cpu_name = self._get_cpu_name()
         
         # CPU 核心数
         try:
@@ -216,40 +280,135 @@ class SystemDetector:
             info.cpu_threads = 1
         
         # 内存信息
+        self._detect_memory(info)
+    
+    def _get_cpu_name(self) -> str:
+        """获取 CPU 名称"""
+        cpu_name = platform.processor()
+        if cpu_name:
+            return cpu_name
+        
+        system = platform.system()
+        
+        # Linux: 从 /proc/cpuinfo 获取
+        if system == "Linux":
+            try:
+                with open("/proc/cpuinfo") as f:
+                    for line in f:
+                        if line.startswith("model name"):
+                            return line.split(":", 1)[1].strip()
+            except Exception:
+                pass
+        
+        # macOS: 使用 sysctl
+        elif system == "Darwin":
+            try:
+                result = subprocess.run(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    return result.stdout.strip()
+            except Exception:
+                pass
+        
+        # BSD: 使用 sysctl
+        elif system in ("FreeBSD", "OpenBSD", "NetBSD"):
+            try:
+                result = subprocess.run(
+                    ["sysctl", "-n", "hw.model"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    return result.stdout.strip()
+            except Exception:
+                pass
+        
+        return "Unknown CPU"
+    
+    def _detect_memory(self, info: SystemInfo) -> None:
+        """检测内存信息"""
+        # 方法1: 使用 psutil
         try:
             import psutil
             mem = psutil.virtual_memory()
             info.memory_total_gb = round(mem.total / (1024**3), 2)
             info.memory_available_gb = round(mem.available / (1024**3), 2)
+            return
         except ImportError:
-            # Windows 备用方案
-            if platform.system() == "Windows":
-                try:
-                    import ctypes
-                    kernel32 = ctypes.windll.kernel32
-                    c_ulonglong = ctypes.c_ulonglong
+            pass
+        
+        system = platform.system()
+        
+        # 方法2: Windows 专用
+        if system == "Windows":
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                c_ulonglong = ctypes.c_ulonglong
+                
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ('dwLength', ctypes.c_ulong),
+                        ('dwMemoryLoad', ctypes.c_ulong),
+                        ('ullTotalPhys', c_ulonglong),
+                        ('ullAvailPhys', c_ulonglong),
+                        ('ullTotalPageFile', c_ulonglong),
+                        ('ullAvailPageFile', c_ulonglong),
+                        ('ullTotalVirtual', c_ulonglong),
+                        ('ullAvailVirtual', c_ulonglong),
+                        ('ullAvailExtendedVirtual', c_ulonglong),
+                    ]
+                
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(stat)
+                kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                
+                info.memory_total_gb = round(stat.ullTotalPhys / (1024**3), 2)
+                info.memory_available_gb = round(stat.ullAvailPhys / (1024**3), 2)
+                return
+            except Exception:
+                pass
+        
+        # 方法3: Linux - 读取 /proc/meminfo
+        elif system == "Linux":
+            try:
+                with open("/proc/meminfo") as f:
+                    mem_info = {}
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            key = parts[0].rstrip(":")
+                            value = int(parts[1])  # KB
+                            mem_info[key] = value
                     
-                    class MEMORYSTATUSEX(ctypes.Structure):
-                        _fields_ = [
-                            ('dwLength', ctypes.c_ulong),
-                            ('dwMemoryLoad', ctypes.c_ulong),
-                            ('ullTotalPhys', c_ulonglong),
-                            ('ullAvailPhys', c_ulonglong),
-                            ('ullTotalPageFile', c_ulonglong),
-                            ('ullAvailPageFile', c_ulonglong),
-                            ('ullTotalVirtual', c_ulonglong),
-                            ('ullAvailVirtual', c_ulonglong),
-                            ('ullAvailExtendedVirtual', c_ulonglong),
-                        ]
-                    
-                    stat = MEMORYSTATUSEX()
-                    stat.dwLength = ctypes.sizeof(stat)
-                    kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
-                    
-                    info.memory_total_gb = round(stat.ullTotalPhys / (1024**3), 2)
-                    info.memory_available_gb = round(stat.ullAvailPhys / (1024**3), 2)
-                except Exception:
-                    pass
+                    if "MemTotal" in mem_info:
+                        info.memory_total_gb = round(mem_info["MemTotal"] / (1024**2), 2)
+                    if "MemAvailable" in mem_info:
+                        info.memory_available_gb = round(mem_info["MemAvailable"] / (1024**2), 2)
+                    elif "MemFree" in mem_info:
+                        # 老版本内核没有 MemAvailable
+                        info.memory_available_gb = round(mem_info["MemFree"] / (1024**2), 2)
+                    return
+            except Exception:
+                pass
+        
+        # 方法4: macOS/BSD - 使用 sysctl
+        elif system in ("Darwin", "FreeBSD", "OpenBSD", "NetBSD"):
+            try:
+                # 获取总内存
+                result = subprocess.run(
+                    ["sysctl", "-n", "hw.memsize" if system == "Darwin" else "hw.physmem"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    total_bytes = int(result.stdout.strip())
+                    info.memory_total_gb = round(total_bytes / (1024**3), 2)
+                    # BSD 系统获取可用内存比较复杂，这里简化处理
+                    info.memory_available_gb = info.memory_total_gb * 0.5  # 估算值
+                return
+            except Exception:
+                pass
     
     def _detect_python(self, info: SystemInfo) -> None:
         """检测 Python 环境"""
@@ -329,12 +488,13 @@ class SystemDetector:
         
         if system == "Windows":
             try:
-                import subprocess
                 result = subprocess.run(
                     ["ipconfig", "/all"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
+                    encoding='gbk',
+                    errors='ignore'
                 )
                 for line in result.stdout.split("\n"):
                     if "DNS" in line and ":" in line:
@@ -346,18 +506,45 @@ class SystemDetector:
             except Exception:
                 pass
         else:
-            # Linux/macOS: 读取 /etc/resolv.conf
+            # Linux/macOS/BSD: 读取 /etc/resolv.conf
             try:
                 with open("/etc/resolv.conf") as f:
                     for line in f:
+                        line = line.strip()
                         if line.startswith("nameserver"):
                             parts = line.split()
                             if len(parts) >= 2:
                                 dns_servers.append(parts[1])
             except Exception:
                 pass
+            
+            # 如果没有找到，尝试使用 systemd-resolve (现代 Linux)
+            if not dns_servers and system == "Linux":
+                try:
+                    result = subprocess.run(
+                        ["systemd-resolve", "--status"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    for line in result.stdout.split("\n"):
+                        if "DNS Servers" in line:
+                            parts = line.split(":")
+                            if len(parts) >= 2:
+                                servers = parts[1].strip().split()
+                                dns_servers.extend(servers)
+                except Exception:
+                    pass
         
-        return dns_servers[:5]  # 最多返回 5 个
+        # 去重并返回前 5 个
+        seen = set()
+        unique_servers = []
+        for server in dns_servers:
+            if server not in seen:
+                seen.add(server)
+                unique_servers.append(server)
+        
+        return unique_servers[:5]
     
     def _detect_time(self, info: SystemInfo) -> None:
         """检测时间信息"""

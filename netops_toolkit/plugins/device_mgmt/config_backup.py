@@ -14,7 +14,7 @@ import json
 import os
 import time
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, register_plugin
+from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
 from netops_toolkit.core.logger import get_logger
 from netops_toolkit.utils.ssh_utils import SSHConnection, check_netmiko_available
 from netops_toolkit.config.device_inventory import DeviceInventory
@@ -54,11 +54,66 @@ class ConfigBackupPlugin(Plugin):
             return False, "Netmiko库未安装, 请运行: pip install netmiko"
         return True, None
     
-    def get_required_params(self) -> List[str]:
-        """获取必需参数"""
-        return []  # 可以通过targets或group指定设备
+    def get_required_params(self) -> List[ParamSpec]:
+        """获取参数规格"""
+        return [
+            ParamSpec(
+                name="targets",
+                param_type=str,
+                description="目标设备列表(逗号分隔)",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="group",
+                param_type=str,
+                description="设备组名称",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="username",
+                param_type=str,
+                description="SSH用户名",
+                required=False,
+                default="admin",
+            ),
+            ParamSpec(
+                name="password",
+                param_type=str,
+                description="SSH密码",
+                required=False,
+                default="",
+            ),
+            ParamSpec(
+                name="device_type",
+                param_type=str,
+                description="设备类型",
+                required=False,
+                default="cisco_ios",
+            ),
+            ParamSpec(
+                name="backup_dir",
+                param_type=str,
+                description="备份目录",
+                required=False,
+                default="./backups",
+            ),
+        ]
     
-    def run(self, params: Dict[str, Any]) -> PluginResult:
+    def run(
+        self,
+        targets: str = "",
+        group: str = "",
+        username: str = "admin",
+        password: str = "",
+        device_type: str = "cisco_ios",
+        backup_dir: str = "./backups",
+        max_workers: int = 5,
+        timeout: int = 60,
+        compare_with_last: bool = True,
+        **kwargs,
+    ) -> PluginResult:
         """
         执行配置备份
         
@@ -73,20 +128,12 @@ class ConfigBackupPlugin(Plugin):
             timeout: 连接超时 (默认60秒)
             compare_with_last: 是否与上次备份对比 (默认True)
         """
-        # 获取参数
-        targets = params.get("targets", [])
-        group = params.get("group")
-        username = params.get("username", "admin")
-        password = params.get("password", "")
-        device_type = params.get("device_type", "cisco_ios")
-        backup_dir = params.get("backup_dir", "./backups")
-        max_workers = params.get("max_workers", 5)
-        timeout = params.get("timeout", 60)
-        compare_with_last = params.get("compare_with_last", True)
+        # 处理targets参数
+        target_list = [t.strip() for t in targets.split(",") if t.strip()] if targets else []
         
         # 如果指定了设备组,从设备清单获取设备
         device_info_map = {}
-        if group and not targets:
+        if group and not target_list:
             inventory = DeviceInventory()
             devices_info = inventory.get_devices_by_group(group)
             if not devices_info:
@@ -98,9 +145,9 @@ class ConfigBackupPlugin(Plugin):
             for d in devices_info:
                 if d.get("host"):
                     device_info_map[d["host"]] = d
-            targets = list(device_info_map.keys())
+            target_list = list(device_info_map.keys())
         
-        if not targets:
+        if not target_list:
             return PluginResult(
                 status=ResultStatus.FAILED,
                 message="未指定目标设备",
@@ -111,11 +158,11 @@ class ConfigBackupPlugin(Plugin):
         backup_path = Path(backup_dir)
         backup_path.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"开始备份 {len(targets)} 台设备配置到 {backup_dir}")
+        logger.info(f"开始备份 {len(target_list)} 台设备配置到 {backup_dir}")
         
         # 执行备份
         results = self._backup_devices(
-            targets=targets,
+            targets=target_list,
             device_info_map=device_info_map,
             username=username,
             password=password,
@@ -137,7 +184,7 @@ class ConfigBackupPlugin(Plugin):
             data={
                 "results": results,
                 "summary": {
-                    "total": len(targets),
+                    "total": len(target_list),
                     "success": success_count,
                     "failed": fail_count,
                     "changed": changed_count,

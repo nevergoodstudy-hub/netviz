@@ -2,9 +2,9 @@
 Traceroute路由追踪插件
 
 提供路由追踪功能,支持TTL分析和可视化路径展示。
+支持 Windows、Linux、macOS 和 BSD 系统。
 """
 
-import platform
 import re
 import subprocess
 from datetime import datetime
@@ -27,6 +27,11 @@ from netops_toolkit.ui.components import (
 )
 from netops_toolkit.utils.network_utils import is_valid_ip, resolve_hostname
 from netops_toolkit.utils.export_utils import save_report
+from netops_toolkit.utils.platform_utils import (
+    get_platform,
+    get_traceroute_command,
+    run_command,
+)
 
 logger = get_logger(__name__)
 
@@ -185,39 +190,21 @@ class TraceroutePlugin(Plugin):
             跳数信息列表
         """
         hops = []
+        platform_info = get_platform()
         
-        # 根据操作系统构建命令
-        if platform.system().lower() == "windows":
-            # Windows: tracert
-            cmd = [
-                "tracert",
-                "-h", str(max_hops),
-                "-w", str(int(timeout * 1000)),
-                target
-            ]
-        else:
-            # Linux/Mac: traceroute
-            cmd = [
-                "traceroute",
-                "-m", str(max_hops),
-                "-w", str(int(timeout)),
-                target
-            ]
+        # 使用跨平台工具获取命令
+        cmd, cmd_type = get_traceroute_command(target, max_hops, timeout)
         
         try:
             console.print("[dim]正在执行追踪...[/dim]")
             
-            result = subprocess.run(
+            result = run_command(
                 cmd,
-                capture_output=True,
-                text=True,
                 timeout=max_hops * timeout + 30,
-                encoding='gbk' if platform.system().lower() == "windows" else 'utf-8',
-                errors='ignore',
             )
             
             output = result.stdout
-            hops = self._parse_traceroute_output(output)
+            hops = self._parse_traceroute_output(output, platform_info)
             
         except subprocess.TimeoutExpired:
             logger.warning("Traceroute超时")
@@ -226,19 +213,23 @@ class TraceroutePlugin(Plugin):
         
         return hops
     
-    def _parse_traceroute_output(self, output: str) -> List[Dict[str, Any]]:
+    def _parse_traceroute_output(self, output: str, platform_info=None) -> List[Dict[str, Any]]:
         """
         解析traceroute输出
         
         Args:
             output: 命令输出
+            platform_info: 平台信息
             
         Returns:
             跳数信息列表
         """
         hops = []
         
-        if platform.system().lower() == "windows":
+        if platform_info is None:
+            platform_info = get_platform()
+        
+        if platform_info.is_windows:
             # Windows tracert 输出格式:
             # 1    <1 毫秒   <1 毫秒   <1 毫秒 192.168.1.1
             # 2     *        *        *     请求超时。
