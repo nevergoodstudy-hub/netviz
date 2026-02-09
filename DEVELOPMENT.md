@@ -338,18 +338,59 @@ python -m netops_toolkit --version
 - [x] MAC地址查询插件
 - [x] WHOIS查询插件
 
+### Phase 2 - TUI核心功能 (✅ 已完成 2026-02-01)
+- [x] 设备管理屏幕 (device_screen.py)
+  - 设备清单加载和展示
+  - 8个快捷命令 (show version/接口状态/ARP表等)
+  - 多厂商命令映射 (Cisco/Huawei/Juniper)
+  - 批量配置备份
+- [x] 配置中心屏幕 (config_screen.py)
+  - 5个预置Jinja2模板 (VLAN/接口/ACL/NTP/Banner)
+  - 变量表单动态生成
+  - 实时配置预览
+  - 批量设备配置推送
+- [x] 诊断工具屏幕 (diagnostics_screen.py)
+  - 多设备选择 (全选/搜索)
+  - 6个诊断命令预设
+  - ThreadPoolExecutor并发执行 (最多10并发)
+  - 表格+详情双视图
+  - JSON/文本导出
+- [x] 凭据安全管理
+  - 环境变量 NETOPS_USERNAME/NETOPS_PASSWORD
+  - 未配置时使用模拟输出
+- [x] TUI快捷键集成
+  - D - 设备管理
+  - C - 配置中心
+  - X - 诊断工具
+
+### Phase 3 - Clean Architecture 重构 (✅ 已完成 2026-02-09)
+- [x] Domain 层 (entities, validators, exceptions, events, services)
+- [x] Application 层 (commands, DTOs, interfaces)
+- [x] Infrastructure 层 (settings, credential_store, sanitizer, audit_log, DI container)
+- [x] Presentation 层 (CLI, Web API, TUI 适配)
+- [x] Plugin 系统升级 (core/builtin/contrib 三级目录)
+- [x] 异步 Web API (FastAPI + HTMX + Tailwind CSS)
+- [x] 安全加固 (命令注入防护, 敏感数据脱敏, 审计日志)
+- [x] 完整 QA 测试 (417 passed, 35 security tests, TEST_REPORT.md)
+
 ### 测试和文档
-- [ ] 单元测试
-- [ ] 集成测试
+- [x] 单元测试 (417 tests passing)
+- [x] 集成测试 (cross-layer workflow tests)
+- [x] 安全测试 (sanitizer, validators, data masking)
 - [x] 用户指南 (docs/USER_GUIDE.md)
+- [x] 架构重构文档 (ARCHITECTURE_REFACTORING_PROPOSAL.md)
+- [x] 迁移指南 (MIGRATION_GUIDE.md)
+- [x] 测试报告 (TEST_REPORT.md)
 - [ ] 插件开发指南
 - [ ] API文档
 
 ## 技术栈
 
+- **TUI框架**: Textual
 - **CLI框架**: Typer
 - **交互界面**: Questionary, Rich
 - **网络库**: ping3, netmiko, dnspython
+- **模板引擎**: Jinja2
 - **日志**: loguru
 - **配置**: PyYAML
 - **安全**: cryptography
@@ -455,5 +496,5 @@ class MyPlugin(Plugin):
 
 ---
 
-**最后更新**: 2026-01-23
-**版本**: v1.1.0
+**最后更新**: 2026-02-09
+**版本**: v2.0.0 (Clean Architecture 重构 + QA 测试完成)

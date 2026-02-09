@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 页面标题 -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">🖥️ 设备管理</h1>
+        <button class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                hx-get="/htmx/devices/table" hx-target="#devices-table" hx-swap="innerHTML">
+            🔄 刷新列表
+        </button>
+    </div>
+    
+    <!-- 设备表格 -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">设备清单</h2>
+                <div class="flex items-center space-x-2">
+                    <input type="text" id="device-search" placeholder="🔍 搜索设备..."
+                           class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                </div>
+            </div>
+        </div>
+        
+        <div id="devices-table" class="overflow-x-auto"
+             hx-get="/htmx/devices/table" hx-trigger="load" hx-swap="innerHTML">
+            <div class="text-center py-12 text-gray-500">
+                ⏳ 加载设备列表...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 设备搜索过滤
+document.getElementById('device-search').addEventListener('input', function(e) {
+    const filter = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#devices-table tbody tr');
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(filter) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

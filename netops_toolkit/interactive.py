@@ -165,7 +165,7 @@ def run_port_scan() -> bool:
 
 def run_arp_scan() -> bool:
     """ARP扫描"""
-    from netops_toolkit.plugins.scanning.arp_scan import ArpScanPlugin
+    from netops_toolkit.plugins.scanning.arp_scan import ARPScanPlugin
     
     target = collector.collect_text("目标网段 (如: 192.168.1.0/24)")
     if not target:
@@ -179,7 +179,7 @@ def run_arp_scan() -> bool:
     if workers is None:
         return None
     
-    plugin = ArpScanPlugin()
+    plugin = ARPScanPlugin()
     if not plugin.initialize():
         console.print("[red]插件初始化失败[/red]")
         return False

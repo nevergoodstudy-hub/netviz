@@ -1,0 +1,296 @@
+/* NetOps Toolkit TUI - 暗色主题 */
+/* 定义暗色主题的颜色方案 */
+
+/* ========== 全局颜色 ========== */
+
+Screen {
+    background: $surface;
+}
+
+/* ========== Header ========== */
+
+Header {
+    background: $primary;
+    color: $text;
+}
+
+/* ========== 侧边栏 ========== */
+
+#sidebar {
+    background: $surface-darken-1;
+    border-right: solid $primary-darken-2;
+}
+
+/* ========== 面板 ========== */
+
+.panel {
+    background: $panel;
+    border: round $primary-darken-1;
+}
+
+.panel-title {
+    color: $text;
+    background: $primary-darken-2;
+}
+
+/* ========== 插件列表 ========== */
+
+.plugin-item {
+    background: $surface;
+    color: $text;
+}
+
+.plugin-item:hover {
+    background: $primary-darken-3;
+    color: $text;
+}
+
+.plugin-item:focus {
+    background: $primary;
+    color: $text;
+}
+
+.plugin-item.selected {
+    background: $accent;
+    color: $text;
+}
+
+/* 分类组 */
+.category-header {
+    background: $surface-darken-2;
+    color: $text-muted;
+}
+
+.category-header:hover {
+    color: $text;
+}
+
+/* ========== 按钮 ========== */
+
+.btn-primary {
+    background: $primary;
+    color: $text;
+}
+
+.btn-primary:hover {
+    background: $primary-lighten-1;
+}
+
+.btn-primary:focus {
+    background: $primary-lighten-2;
+}
+
+.btn-secondary {
+    background: $secondary;
+    color: $text;
+}
+
+.btn-secondary:hover {
+    background: $secondary-lighten-1;
+}
+
+.btn-danger {
+    background: $error;
+    color: $text;
+}
+
+.btn-danger:hover {
+    background: $error-lighten-1;
+}
+
+/* ========== 表单 ========== */
+
+.form-label {
+    color: $text-muted;
+}
+
+.form-hint {
+    color: $text-disabled;
+}
+
+Input {
+    background: $surface-darken-1;
+    border: tall $primary-darken-2;
+    color: $text;
+}
+
+Input:focus {
+    border: tall $accent;
+}
+
+Input.-invalid {
+    border: tall $error;
+}
+
+Select {
+    background: $surface-darken-1;
+    border: tall $primary-darken-2;
+    color: $text;
+}
+
+Select:focus {
+    border: tall $accent;
+}
+
+/* ========== 结果表格 ========== */
+
+DataTable {
+    background: $surface;
+}
+
+DataTable > .datatable--header {
+    background: $primary-darken-2;
+    color: $text;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary;
+    color: $text;
+}
+
+DataTable > .datatable--even-row {
+    background: $surface-darken-1;
+}
+
+DataTable:focus > .datatable--cursor {
+    background: $accent;
+}
+
+/* ========== 进度面板 ========== */
+
+#progress-panel {
+    background: $panel;
+    border: round $primary-darken-1;
+}
+
+ProgressBar > .bar--bar {
+    background: $primary-darken-3;
+}
+
+ProgressBar > .bar--complete {
+    background: $success;
+}
+
+ProgressBar.-error > .bar--complete {
+    background: $error;
+}
+
+.progress-label {
+    color: $text-muted;
+}
+
+/* ========== 日志查看器 ========== */
+
+#log-viewer {
+    background: $surface-darken-2;
+    border: round $primary-darken-2;
+}
+
+RichLog {
+    background: $surface-darken-2;
+}
+
+/* ========== 状态栏 ========== */
+
+#status-bar {
+    background: $primary-darken-3;
+    color: $text-muted;
+}
+
+.status-success {
+    color: $success;
+}
+
+.status-warning {
+    color: $warning;
+}
+
+.status-error {
+    color: $error;
+}
+
+/* ========== 面包屑导航 ========== */
+
+#breadcrumb {
+    background: $surface-darken-1;
+    color: $text-muted;
+}
+
+.breadcrumb-item {
+    color: $text-muted;
+}
+
+.breadcrumb-item:hover {
+    color: $accent;
+}
+
+.breadcrumb-item.current {
+    color: $text;
+}
+
+.breadcrumb-separator {
+    color: $text-disabled;
+}
+
+/* ========== 工具提示 ========== */
+
+.tooltip {
+    background: $surface-lighten-1;
+    border: round $primary;
+    color: $text;
+}
+
+/* ========== 搜索框 ========== */
+
+#search-box {
+    background: $surface-darken-1;
+}
+
+/* ========== 模态框 ========== */
+
+.modal-screen {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.modal-dialog {
+    background: $surface;
+    border: thick $primary;
+}
+
+.modal-title {
+    color: $text;
+    background: $primary-darken-2;
+}
+
+/* ========== 通知 ========== */
+
+Toast {
+    background: $surface-lighten-1;
+    color: $text;
+}
+
+Toast.-information {
+    border-left: outer $accent;
+}
+
+Toast.-warning {
+    border-left: outer $warning;
+}
+
+Toast.-error {
+    border-left: outer $error;
+}
+
+/* ========== 滚动条 ========== */
+
+*::-webkit-scrollbar {
+    background: $surface-darken-2;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: $primary-darken-2;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: $primary-darken-1;
+}

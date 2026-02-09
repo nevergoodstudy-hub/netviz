@@ -1,13 +1,14 @@
 # NetOps Toolkit - 网络工程实施及测试工具集
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 面向网络工程师的多功能CLI工具箱,集成网络实施、测试、巡检、诊断功能于一体。
 
 ## ✨ 核心特性
 
-- 🎨 **美观易用**  - 基于Rich/Questionary的现代化CLI界面
+- 🖥️ **现代TUI** - 基于Textual的全屏终端界面,支持鼠标/键盘双模式 (**新!**)
+- 🎨 **美观易用** - 基于Rich/Questionary的现代化CLI界面
 - 🔌 **插件化架构** - 模块化设计,易于扩展
 - 🏢 **多厂商支持** - Cisco, Huawei, H3C, Juniper等
 - 🚀 **批量操作** - 并发处理,提升效率
@@ -60,6 +61,7 @@
 | `mac-lookup` | MAC地址查询 | `netops mac-lookup 00:0C:29:12:34:56` |
 | `http` | HTTP调试 | `netops http https://api.example.com` |
 | `whois` | WHOIS查询 | `netops whois baidu.com` |
+| `tui` | 启动现代TUI界面 | `netops tui` |
 
 ## 📦 安装
 
@@ -74,7 +76,7 @@
 | OpenBSD | 6+ | 支持 |
 
 ### Python 版本要求
-- Python 3.8 或更高版本
+- Python 3.14 或更高版本
 
 ### 方式1: 从源码安装
 
@@ -143,11 +145,62 @@ pkg install mtr
 
 ## 🚀 快速开始
 
-### 交互模式(推荐)
+### Web UI 模式 (新!)
+```powershell
+# 启动 Web UI 界面
+netops web
+# 或
+python -m netops_toolkit --web
+```
+
+Web UI 特性:
+- 🌐 基于 FastAPI + HTMX + Tailwind CSS
+- 📱 响应式设计，支持移动端
+- 📡 WebSocket 实时监控
+- 📊 API 文档 (http://localhost:8000/api/docs)
+- 🌙 暗色/亮色主题切换
+
+### TUI 模式
+```powershell
+# 启动现代化全屏TUI界面
+netops tui
+# 或
+python -m netops_toolkit --tui
+```
+
+TUI界面特性:
+- 🖱️ 鼠标/键盘双模式交互
+- 🌙 暗色/亮色主题切换 (T键)
+- 🔍 命令面板快速搜索 (Ctrl+P)
+- 📊 实时监控仪表板 (M键) - Ping监控、设备状态、自动刷新
+- 📄 报表中心 (R键) - PDF/Excel导出、多种模板
+- 📅 任务调度 - 定时备份、巡检、报表生成
+- 🗺️ 网络拓扑 (O键) - ASCII/Unicode拓扑可视化、多种渲染样式
+- ✅ 合规检查 (P键) - 配置审计、内置规则、差异报告
+- 📝 变更审计 (A键) - 操作日志、变更追溯、导出报表 **(新!)**
+
+**TUI快捷键:**
+| 键位 | 功能 |
+|------|------|
+| H | 返回主页 |
+| D | 设备管理 |
+| C | 配置中心 |
+| X | 诊断工具 |
+| M | 监控仪表板 |
+| R | 报表中心 |
+| O | 网络拓扑 |
+| P | 合规检查 |
+| A | 变更审计 |
+| T | 切换主题 |
+| ? | 帮助 |
+| Q | 退出 |
+| Esc | 返回上一级 |
+| Ctrl+P | 命令面板 |
+
+### 交互模式
 ```powershell
 # 启动交互式菜单
 netops
-
 # 或
 python -m netops_toolkit
 ```
@@ -210,12 +263,40 @@ groups:
         ip: "192.168.1.11"
 ```
 
-### 凭证管理 (config/secrets.yaml)
+### 凭证管理
+
+推荐通过环境变量设置凭据，避免在配置文件中存储明文密码：
+
+**Windows (PowerShell)**
+```powershell
+# 临时设置（当前会话有效）
+$env:NETOPS_USERNAME = "admin"
+$env:NETOPS_PASSWORD = "your_password"
+
+# 永久设置（当前用户）
+[Environment]::SetEnvironmentVariable("NETOPS_USERNAME", "admin", "User")
+[Environment]::SetEnvironmentVariable("NETOPS_PASSWORD", "your_password", "User")
+```
+
+**Linux/macOS/BSD**
+```bash
+# 临时设置
+export NETOPS_USERNAME="admin"
+export NETOPS_PASSWORD="your_password"
+
+# 永久设置（添加到 ~/.bashrc 或 ~/.zshrc）
+echo 'export NETOPS_USERNAME="admin"' >> ~/.bashrc
+echo 'export NETOPS_PASSWORD="your_password"' >> ~/.bashrc
+```
+
+**注意：** 如果未设置环境变量，TUI将使用模拟输出演示功能。
+
+**备选: 配置文件凭据 (config/secrets.yaml)**
 ```yaml
 credentials:
   admin_cred:
     username: "admin"
-    password: "encrypted_password_here"
+    password: "encrypted_password_here"  # 建议加密存储
 ```
 
 ## 📚 使用示例
@@ -263,6 +344,9 @@ result = plugin.run(
 - [插件开发](docs/plugin_dev.md)
 - [API参考](docs/api_reference.md)
 - [常见问题](docs/faq.md)
+- [架构重构方案](ARCHITECTURE_REFACTORING_PROPOSAL.md)
+- [迁移指南](MIGRATION_GUIDE.md)
+- [测试报告](TEST_REPORT.md)
 
 ## 🗓️ 路线图
 
@@ -270,12 +354,69 @@ result = plugin.run(
 - [x] v1.1 - 完整插件集 (15个插件)
 - [x] v1.4 - **多系统支持** (Windows/Linux/macOS/BSD)
 - [x] v1.6 - **工具增强** (导出/依赖管理/跨平台)
-- [ ] v2.0 - Web UI界面
+- [x] v1.7 - **现代TUI界面** (基于Textual的全屏终端界面)
+- [x] v2.0 - **Clean Architecture重构 + Web API + QA测试** ✨
 - [ ] v2.5 - Ansible集成
 - [ ] v3.0 - SNMP监控
 - [ ] v3.5 - AI故障预测
 
-## 🆕 v1.6 更新日志 (2026-01-30)
+## 🆕 v2.0 更新日志 (2026-02-09)
+
+### Clean Architecture 重构 & QA 测试
+本版本完成了全面的架构重构，引入 Clean Architecture 分层设计，并通过完整 QA 测试验证。
+
+**架构重构：**
+- 🏗️ **Clean Architecture 四层架构** - Domain / Application / Infrastructure / Presentation 清晰分层
+- 🔧 **依赖注入容器** - 基于 dependency-injector 的 DI 容器
+- ⚙️ **Pydantic Settings** - 类型安全的环境变量配置管理
+- 🔌 **插件系统升级** - 三级目录 (core/builtin/contrib) + 异步插件支持
+- 🌐 **异步 Web API** - FastAPI + HTMX + Tailwind CSS 的现代 Web 界面
+- 🔐 **安全加固** - 命令注入防护、敏感数据脱敏、审计日志增强
+
+**QA 测试结果：**
+- ✅ 417/417 测试通过 (0 失败)
+- 🔒 35/35 安全测试通过
+- 📊 19% 整体覆盖率 (核心域层 75%+)
+- 📋 7 个问题已记录 (详见 `TEST_ISSUES.txt`)
+
+**新增文档：**
+- `ARCHITECTURE_REFACTORING_PROPOSAL.md` - 架构重构方案 (5阶段)
+- `MIGRATION_GUIDE.md` - 迁移指南
+- `TEST_REPORT.md` - 完整测试报告 (IEEE 829 格式)
+- `TEST_ISSUES.txt` - 测试问题清单
+
+---
+
+## 🆕 v1.7 更新日志 (2026-01-30)
+
+### 现代TUI界面
+本版本引入基于Textual框架的全屏终端用户界面，大幅提升用户体验。
+
+**新特性：**
+- 🖥️ **全屏TUI界面** - 现代化终端用户界面，支持鼠标/键盘双模式
+- 🌙 **主题切换** - 暗色/亮色主题一键切换 (T键)
+- 🔍 **命令面板** - Ctrl+P快速搜索插件
+- 📊 **实时进度** - 后台任务实时进度显示
+- 📄 **结果导出** - 支持JSON/CSV/Excel/Markdown格式
+- ⚡ **性能优化** - 懒加载、批量更新减少重绘
+
+**新增文件：**
+- `netops_toolkit/tui/` - TUI模块目录
+- `netops_toolkit/tui/app.py` - 主应用类
+- `netops_toolkit/tui/screens/` - 屏幕组件
+- `netops_toolkit/tui/widgets/` - 自定义组件
+- `netops_toolkit/tui/adapters/` - 插件适配层
+
+**使用方式：**
+```bash
+netops tui
+# 或
+python -m netops_toolkit --tui
+```
+
+---
+
+## v1.6 更新日志 (2026-01-30)
 
 ### 工具增强版本
 本版本添加了多项实用工具，优化架构设计。
@@ -323,6 +464,7 @@ result = plugin.run(
 ## 🙏 致谢
 
 本项目使用了以下优秀的开源库:
+- [Textual](https://github.com/Textualize/textual) - 现代TUI框架
 - [Rich](https://github.com/Textualize/rich) - 终端美化
 - [Questionary](https://github.com/tmbo/questionary) - 交互式提示
 - [Netmiko](https://github.com/ktbyers/netmiko) - SSH自动化

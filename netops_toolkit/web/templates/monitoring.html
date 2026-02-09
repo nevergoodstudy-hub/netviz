@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6" x-data="{ autoRefresh: true, refreshInterval: 5 }">
+    <!-- 页面标题 -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">📈 实时监控</h1>
+        <div class="flex items-center space-x-4">
+            <!-- 自动刷新开关 -->
+            <label class="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                <input type="checkbox" x-model="autoRefresh" 
+                       class="rounded text-primary-600 focus:ring-primary-500">
+                <span>自动刷新</span>
+            </label>
+            
+            <!-- 刷新间隔 -->
+            <select x-model="refreshInterval" 
+                    class="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                <option value="3">3秒</option>
+                <option value="5">5秒</option>
+                <option value="10">10秒</option>
+                <option value="30">30秒</option>
+            </select>
+            
+            <!-- 手动刷新 -->
+            <button class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                    hx-get="/htmx/monitoring/cards" hx-target="#monitoring-cards" hx-swap="innerHTML">
+                🔄 刷新
+            </button>
+        </div>
+    </div>
+    
+    <!-- 监控状态卡片 -->
+    <div id="monitoring-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+         hx-get="/htmx/monitoring/cards" 
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+        <div class="text-center py-12 col-span-full text-gray-500">
+            ⏳ 加载监控状态...
+        </div>
+    </div>
+    
+    <!-- WebSocket 实时监控 -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">📡 WebSocket 实时日志</h2>
+        </div>
+        <div id="ws-log" class="p-4 h-64 overflow-y-auto bg-gray-900 text-green-400 font-mono text-sm">
+            <div>等待连接...</div>
+        </div>
+    </div>
+</div>
+
+{% block extra_scripts %}
+<script>
+// WebSocket 实时监控连接
+let ws = null;
+const wsLog = document.getElementById('ws-log');
+
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws/monitoring`);
+    
+    ws.onopen = function() {
+        addLog('✅ WebSocket 已连接');
+    };
+    
+    ws.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.devices) {
+                data.devices.forEach(d => {
+                    const icon = d.status === 'online' ? '🟢' : '🔴';
+                    addLog(`${icon} ${d.name} (${d.ip}): ${d.status}`);
+                });
+            }
+        } catch (e) {
+            addLog(event.data);
+        }
+    };
+    
+    ws.onclose = function() {
+        addLog('❌ WebSocket 断开，5秒后重连...');
+        setTimeout(connectWebSocket, 5000);
+    };
+    
+    ws.onerror = function() {
+        addLog('⚠️ WebSocket 错误');
+    };
+}
+
+function addLog(message) {
+    const time = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.textContent = `[${time}] ${message}`;
+    wsLog.appendChild(div);
+    wsLog.scrollTop = wsLog.scrollHeight;
+    
+    // 限制日志行数
+    while (wsLog.children.length > 100) {
+        wsLog.removeChild(wsLog.firstChild);
+    }
+}
+
+// 页面加载后连接
+connectWebSocket();
+</script>
+{% endblock %}
+{% endblock %}

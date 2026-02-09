@@ -68,6 +68,11 @@ def expand_ip_range(ip_input: str) -> List[str]:
     """
     ips = []
     
+    # 清理输入：去除空白字符和不可见字符
+    ip_input = ip_input.strip()
+    # 过滤非打印字符（保留必要的点号、斜杠、连字符、逗号）
+    ip_input = ''.join(c for c in ip_input if c.isprintable())
+    
     # 处理逗号分隔的列表
     if "," in ip_input:
         for part in ip_input.split(","):

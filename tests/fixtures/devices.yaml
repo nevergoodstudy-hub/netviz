@@ -1,0 +1,97 @@
+# 测试用设备清单
+# 用于单元测试和集成测试
+
+groups:
+  # 核心路由器组
+  core_routers:
+    vendor: cisco_ios
+    credentials: default
+    description: 核心路由器组 - 骨干网设备
+    devices:
+      - name: core-rtr-01
+        ip: 10.0.0.1
+        port: 22
+        description: 主核心路由器
+        tags: [core, primary, datacenter]
+      - name: core-rtr-02
+        ip: 10.0.0.2
+        port: 22
+        description: 备核心路由器
+        tags: [core, backup, datacenter]
+
+  # 接入交换机组
+  access_switches:
+    vendor: cisco_ios
+    credentials: default
+    description: 接入层交换机
+    devices:
+      - name: acc-sw-01
+        ip: 10.0.1.1
+        port: 22
+        description: 1楼接入交换机
+        tags: [access, floor1]
+      - name: acc-sw-02
+        ip: 10.0.1.2
+        port: 22
+        description: 2楼接入交换机
+        tags: [access, floor2]
+      - name: acc-sw-03
+        ip: 10.0.1.3
+        port: 22
+        description: 3楼接入交换机
+        tags: [access, floor3]
+
+  # 华为设备组
+  huawei_devices:
+    vendor: huawei
+    credentials: huawei_creds
+    description: 华为网络设备
+    devices:
+      - name: huawei-sw-01
+        ip: 10.0.2.1
+        port: 22
+        description: 华为核心交换机
+        tags: [huawei, core]
+      - name: huawei-rtr-01
+        ip: 10.0.2.2
+        port: 22
+        description: 华为边界路由器
+        tags: [huawei, edge]
+
+  # Juniper 设备组
+  juniper_devices:
+    vendor: juniper_junos
+    credentials: juniper_creds
+    description: Juniper 网络设备
+    devices:
+      - name: juniper-fw-01
+        ip: 10.0.3.1
+        port: 22
+        description: Juniper SRX 防火墙
+        tags: [juniper, security]
+
+# 独立设备（不属于任何组）
+standalone_devices:
+  - name: firewall-main
+    ip: 10.0.100.1
+    port: 22
+    vendor: cisco_asa
+    credentials: fw_creds
+    description: 边界防火墙 - 主设备
+    tags: [security, perimeter, critical]
+
+  - name: firewall-backup
+    ip: 10.0.100.2
+    port: 22
+    vendor: cisco_asa
+    credentials: fw_creds
+    description: 边界防火墙 - 备份设备
+    tags: [security, perimeter, standby]
+
+  - name: wlc-01
+    ip: 10.0.50.1
+    port: 22
+    vendor: cisco_wlc
+    credentials: wlc_creds
+    description: 无线控制器
+    tags: [wireless, management]

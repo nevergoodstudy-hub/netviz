@@ -1,0 +1,231 @@
+===============================================================================
+ NetOps Toolkit — QA Testing Issue Report
+ Generated: 2025-02-09
+ Tester: AI QA Engineer (Warp Agent Mode)
+ Environment: Windows, Python 3.14.2, pytest 9.0.2
+===============================================================================
+
+===============================================================================
+ ISSUE #1 — dependency_injector package not installed
+===============================================================================
+Severity  : HIGH
+Category  : Environment / Dependency
+Component : netops_toolkit/infrastructure/container.py
+Status    : Open
+
+Description:
+  The 'dependency_injector' package is declared in pyproject.toml under
+  [project.optional-dependencies] but is NOT installed in the current
+  Python environment. This causes ImportError when any code path attempts
+  to import the DI container module.
+
+Reproduction Steps:
+  1. python -m py_compile netops_toolkit/infrastructure/container.py
+  2. Observe: ModuleNotFoundError: No module named 'dependency_injector'
+
+Impact:
+  Any production code relying on the DI container will crash at import time.
+  Currently the test suite works because tests use conftest.py fixtures that
+  mock/bypass the DI container.
+
+Recommended Fix:
+  pip install dependency-injector
+  OR add it to the base [project.dependencies] instead of optional-dependencies.
+
+
+===============================================================================
+ ISSUE #2 — asyncio.WindowsSelectorEventLoopPolicy deprecation
+===============================================================================
+Severity  : MEDIUM
+Category  : Deprecation / Compatibility
+Component : Multiple test files (via pytest-asyncio)
+Status    : Open
+
+Description:
+  17 DeprecationWarnings are raised:
+    "asyncio.WindowsSelectorEventLoopPolicy is deprecated as of Python 3.14
+     and will be removed in Python 3.16"
+  This comes from pytest-asyncio's internal event loop setup on Windows.
+
+Reproduction Steps:
+  1. python -m pytest tests/ -v
+  2. Observe warnings in output referencing WindowsSelectorEventLoopPolicy
+
+Impact:
+  Tests will break on Python 3.16+ unless pytest-asyncio updates or the
+  project explicitly sets a compatible event loop policy.
+
+Recommended Fix:
+  - Update pytest-asyncio to a version that supports Python 3.14+
+  - OR set event_loop_policy in pyproject.toml [tool.pytest.ini_options]
+  - OR add conftest.py fixture overriding the event loop policy
+
+
+===============================================================================
+ ISSUE #3 — ResourceWarning: unclosed sqlite3.Connection
+===============================================================================
+Severity  : LOW
+Category  : Resource Leak
+Component : tests/test_services/test_scheduler_service.py (~lines 143, 176)
+Status    : Open
+
+Description:
+  Two ResourceWarning messages about unclosed sqlite3.Connection objects
+  are emitted during test_scheduler_service.py execution. This indicates
+  that the scheduler service (or its test fixtures) do not properly close
+  database connections in teardown.
+
+Reproduction Steps:
+  1. python -m pytest tests/test_services/test_scheduler_service.py -v -W all
+  2. Observe: ResourceWarning: unclosed <sqlite3.Connection ...>
+
+Impact:
+  In long-running processes, unclosed DB connections accumulate, causing
+  resource exhaustion. In tests, it is a code hygiene issue.
+
+Recommended Fix:
+  - Add explicit connection.close() in the scheduler service __del__ or
+    cleanup method.
+  - Add teardown fixture in the test to close the DB connection.
+
+
+===============================================================================
+ ISSUE #4 — Starlette TemplateResponse parameter order deprecation
+===============================================================================
+Severity  : LOW
+Category  : Deprecation / Compatibility
+Component : netops_toolkit/web/app.py (TemplateResponse calls)
+Status    : Open
+
+Description:
+  DeprecationWarning from Starlette:
+    "The `name` argument in TemplateResponse(name=...) is deprecated.
+     Use TemplateResponse(request, name=...) instead."
+  The web app passes (name, context) positional args but Starlette now
+  expects (request, name, context).
+
+Reproduction Steps:
+  1. python -m pytest tests/test_web/ -v
+  2. Observe DeprecationWarning about TemplateResponse parameter order
+
+Impact:
+  Will break when Starlette removes backward compatibility for the old
+  parameter order (likely in next major version).
+
+Recommended Fix:
+  Update all TemplateResponse calls in web/app.py to:
+    TemplateResponse(request, name="template.html", context={...})
+
+
+===============================================================================
+ ISSUE #5 — 33 tests skipped (TUI / Textual tests)
+===============================================================================
+Severity  : MEDIUM
+Category  : Test Coverage Gap
+Component : tests/test_tui/ (all files)
+Status    : Open (by design, but coverage gap)
+
+Description:
+  33 tests are skipped because the Textual test runner environment
+  (headless testing) is not available or the tests import components
+  that require a running terminal. These tests are decorated with
+  skip conditions.
+
+Skipped Test Files:
+  - tests/test_tui/test_tui_app.py
+  - tests/test_tui/test_tui_screens.py
+  - tests/test_tui/test_tui_monitoring_screen.py (partial)
+  - tests/test_tui/test_tui_widgets.py
+
+Impact:
+  The entire TUI layer (presentation) has 0% code coverage. TUI bugs
+  (like the call_from_thread and DuplicateKey bugs found earlier) can
+  only be caught by manual testing.
+
+Recommended Fix:
+  - Set up Textual headless testing (textual[dev] package)
+  - Use pytest-textual-snapshot or Textual's built-in pilot for
+    automated TUI tests
+  - Consider CI environment with virtual display for TUI tests
+
+
+===============================================================================
+ ISSUE #6 — Overall code coverage at 19%
+===============================================================================
+Severity  : HIGH
+Category  : Test Coverage
+Component : Project-wide
+Status    : Open
+
+Description:
+  The overall line coverage is only 19% (15063 statements, 12262 missed).
+  Many critical modules have 0% or near-0% coverage.
+
+Modules with 0% coverage (partial list):
+  - netops_toolkit/cli/*.py (all CLI command modules)
+  - netops_toolkit/tui/**/*.py (all TUI modules)
+  - netops_toolkit/utils/ssh_utils.py
+  - netops_toolkit/utils/preset_utils.py
+  - netops_toolkit/utils/dependency_utils.py
+  - netops_toolkit/infrastructure/container.py
+
+Modules with very low coverage (<20%):
+  - netops_toolkit/ui/menu.py (19%)
+  - netops_toolkit/utils/network_utils.py (17%)
+  - netops_toolkit/utils/platform_utils.py (20%)
+
+Impact:
+  Low coverage means regressions, edge cases, and integration bugs are
+  likely undetected. The 417 passing tests primarily exercise domain
+  logic, validators, and infrastructure utilities.
+
+Recommended Fix:
+  - Prioritize tests for CLI commands (argument parsing, output format)
+  - Add integration tests for SSH utilities (using mocks)
+  - Add TUI headless tests (Textual pilot)
+  - Target 60%+ coverage as next milestone, 80%+ as project goal
+
+
+===============================================================================
+ ISSUE #7 — No integration tests for live network operations
+===============================================================================
+Severity  : LOW (informational)
+Category  : Test Strategy
+Component : tests/test_integration/
+Status    : Open (by design)
+
+Description:
+  Integration tests exist for ping workflow and basic service interactions,
+  but no tests exercise live network device connections (SSH, SNMP, etc.).
+  All device interactions are mocked.
+
+Impact:
+  Mocked tests cannot catch issues with actual device communication
+  libraries (paramiko, netmiko, etc.), network timeouts, or protocol
+  edge cases.
+
+Recommended Fix:
+  - Create a test lab environment with virtual network devices (GNS3,
+    ContainerLab, or similar)
+  - Add optional integration test markers:
+      @pytest.mark.integration_live
+  - Run live tests only in CI environments with lab access
+
+
+===============================================================================
+ SUMMARY
+===============================================================================
+Total Issues Found : 7
+  - HIGH severity  : 2 (dependency_injector missing, 19% coverage)
+  - MEDIUM severity: 2 (asyncio deprecation, TUI tests skipped)
+  - LOW severity   : 3 (sqlite leak, Starlette deprecation, no live tests)
+
+Security Test Results : 35/35 passed, 0 vulnerabilities found
+  - Command injection sanitizer: all dangerous payloads blocked
+  - Input validators: all edge cases handled correctly
+  - Sensitive data masking: passwords/tokens masked in text and dicts
+  - Exception hierarchy: properly structured
+
+===============================================================================
+ END OF ISSUE REPORT
+===============================================================================

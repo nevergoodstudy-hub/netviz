@@ -1,0 +1,301 @@
+/* NetOps Toolkit TUI - 亮色主题 */
+/* 定义亮色主题的颜色方案 */
+/* 注意：此文件需要通过主题切换机制加载 */
+
+/* ========== 颜色变量覆盖 ========== */
+/* Textual使用内置的主题系统，这里定义亮色主题的覆盖 */
+
+$light-bg: #f5f5f5;
+$light-surface: #ffffff;
+$light-text: #1a1a1a;
+$light-text-muted: #666666;
+$light-primary: #2196f3;
+$light-accent: #ff9800;
+
+/* ========== 全局颜色 ========== */
+
+Screen {
+    background: $light-bg;
+}
+
+/* ========== Header ========== */
+
+Header {
+    background: $light-primary;
+    color: white;
+}
+
+/* ========== 侧边栏 ========== */
+
+#sidebar {
+    background: $light-surface;
+    border-right: solid #e0e0e0;
+}
+
+/* ========== 面板 ========== */
+
+.panel {
+    background: $light-surface;
+    border: round #bdbdbd;
+}
+
+.panel-title {
+    color: $light-text;
+    background: #e3f2fd;
+}
+
+/* ========== 插件列表 ========== */
+
+.plugin-item {
+    background: $light-surface;
+    color: $light-text;
+}
+
+.plugin-item:hover {
+    background: #e3f2fd;
+    color: $light-text;
+}
+
+.plugin-item:focus {
+    background: $light-primary;
+    color: white;
+}
+
+.plugin-item.selected {
+    background: $light-accent;
+    color: white;
+}
+
+/* 分类组 */
+.category-header {
+    background: #fafafa;
+    color: $light-text-muted;
+}
+
+.category-header:hover {
+    color: $light-text;
+}
+
+/* ========== 按钮 ========== */
+
+.btn-primary {
+    background: $light-primary;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1976d2;
+}
+
+.btn-secondary {
+    background: #757575;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #616161;
+}
+
+.btn-danger {
+    background: #f44336;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #d32f2f;
+}
+
+/* ========== 表单 ========== */
+
+.form-label {
+    color: $light-text-muted;
+}
+
+.form-hint {
+    color: #9e9e9e;
+}
+
+Input {
+    background: $light-surface;
+    border: tall #bdbdbd;
+    color: $light-text;
+}
+
+Input:focus {
+    border: tall $light-primary;
+}
+
+Input.-invalid {
+    border: tall #f44336;
+}
+
+Select {
+    background: $light-surface;
+    border: tall #bdbdbd;
+    color: $light-text;
+}
+
+Select:focus {
+    border: tall $light-primary;
+}
+
+/* ========== 结果表格 ========== */
+
+DataTable {
+    background: $light-surface;
+}
+
+DataTable > .datatable--header {
+    background: #e3f2fd;
+    color: $light-text;
+}
+
+DataTable > .datatable--cursor {
+    background: $light-primary;
+    color: white;
+}
+
+DataTable > .datatable--even-row {
+    background: #fafafa;
+}
+
+/* ========== 进度面板 ========== */
+
+#progress-panel {
+    background: $light-surface;
+    border: round #bdbdbd;
+}
+
+ProgressBar > .bar--bar {
+    background: #e0e0e0;
+}
+
+ProgressBar > .bar--complete {
+    background: #4caf50;
+}
+
+ProgressBar.-error > .bar--complete {
+    background: #f44336;
+}
+
+.progress-label {
+    color: $light-text-muted;
+}
+
+/* ========== 日志查看器 ========== */
+
+#log-viewer {
+    background: #fafafa;
+    border: round #bdbdbd;
+}
+
+RichLog {
+    background: #fafafa;
+}
+
+/* ========== 状态栏 ========== */
+
+#status-bar {
+    background: #e0e0e0;
+    color: $light-text-muted;
+}
+
+.status-success {
+    color: #4caf50;
+}
+
+.status-warning {
+    color: #ff9800;
+}
+
+.status-error {
+    color: #f44336;
+}
+
+/* ========== 面包屑导航 ========== */
+
+#breadcrumb {
+    background: #fafafa;
+    color: $light-text-muted;
+}
+
+.breadcrumb-item {
+    color: $light-text-muted;
+}
+
+.breadcrumb-item:hover {
+    color: $light-primary;
+}
+
+.breadcrumb-item.current {
+    color: $light-text;
+}
+
+.breadcrumb-separator {
+    color: #9e9e9e;
+}
+
+/* ========== 工具提示 ========== */
+
+.tooltip {
+    background: $light-surface;
+    border: round $light-primary;
+    color: $light-text;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ========== 搜索框 ========== */
+
+#search-box {
+    background: #fafafa;
+}
+
+/* ========== 模态框 ========== */
+
+.modal-screen {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.modal-dialog {
+    background: $light-surface;
+    border: thick $light-primary;
+}
+
+.modal-title {
+    color: $light-text;
+    background: #e3f2fd;
+}
+
+/* ========== 通知 ========== */
+
+Toast {
+    background: $light-surface;
+    color: $light-text;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+Toast.-information {
+    border-left: outer $light-primary;
+}
+
+Toast.-warning {
+    border-left: outer $light-accent;
+}
+
+Toast.-error {
+    border-left: outer #f44336;
+}
+
+/* ========== 滚动条 ========== */
+
+*::-webkit-scrollbar {
+    background: #f5f5f5;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: #bdbdbd;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: #9e9e9e;
+}

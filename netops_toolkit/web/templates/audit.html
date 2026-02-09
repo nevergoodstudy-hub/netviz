@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 页面标题 -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">📝 审计日志</h1>
+        <div class="flex items-center space-x-2">
+            <button class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                    hx-get="/htmx/audit/table" hx-target="#audit-table" hx-swap="innerHTML">
+                🔄 刷新
+            </button>
+            <a href="/api/audit/logs?limit=1000" target="_blank"
+               class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                📥 导出 JSON
+            </a>
+        </div>
+    </div>
+    
+    <!-- 筛选面板 -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">事件类型</label>
+                <select id="filter-type" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">全部类型</option>
+                    <option value="config_backup">配置备份</option>
+                    <option value="config_push">配置推送</option>
+                    <option value="command_execute">命令执行</option>
+                    <option value="device_connect">设备连接</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">操作结果</label>
+                <select id="filter-result" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">全部结果</option>
+                    <option value="success">成功</option>
+                    <option value="failure">失败</option>
+                    <option value="partial">部分成功</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">显示条数</label>
+                <select id="filter-limit" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="20">20条</option>
+                    <option value="50" selected>50条</option>
+                    <option value="100">100条</option>
+                    <option value="200">200条</option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button id="btn-filter" class="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    🔍 筛选
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 审计日志表格 -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div id="audit-table" class="overflow-x-auto"
+             hx-get="/htmx/audit/table" hx-trigger="load" hx-swap="innerHTML">
+            <div class="text-center py-12 text-gray-500">
+                ⏳ 加载审计日志...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 筛选按钮点击事件
+document.getElementById('btn-filter').addEventListener('click', function() {
+    const type = document.getElementById('filter-type').value;
+    const result = document.getElementById('filter-result').value;
+    const limit = document.getElementById('filter-limit').value;
+    
+    let url = `/htmx/audit/table?limit=${limit}`;
+    if (type) url += `&event_type=${type}`;
+    if (result) url += `&result=${result}`;
+    
+    htmx.ajax('GET', url, '#audit-table');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 页面标题 -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">⚙️ 配置中心</h1>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 配置模板 -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">📁 配置模板</h2>
+            </div>
+            <div class="p-4 space-y-2">
+                <button class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                        onclick="loadTemplate('vlan')">
+                    <span class="font-medium">🏷️ VLAN 配置</span>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">创建或修改 VLAN 配置</p>
+                </button>
+                <button class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                        onclick="loadTemplate('interface')">
+                    <span class="font-medium">🔌 接口配置</span>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">配置交换机接口</p>
+                </button>
+                <button class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                        onclick="loadTemplate('acl')">
+                    <span class="font-medium">🔒 ACL 配置</span>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">创建访问控制列表</p>
+                </button>
+                <button class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                        onclick="loadTemplate('ntp')">
+                    <span class="font-medium">🕐 NTP 配置</span>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">配置 NTP 服务器</p>
+                </button>
+            </div>
+        </div>
+        
+        <!-- 配置预览 -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">👁️ 配置预览</h2>
+            </div>
+            <div class="p-4">
+                <pre id="config-preview" class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm h-64 overflow-auto">
+! 选择一个配置模板查看预览
+                </pre>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 目标设备 -->
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">🎯 目标设备</h2>
+        </div>
+        <div id="target-devices" class="p-4"
+             hx-get="/htmx/devices/table" hx-trigger="load" hx-swap="innerHTML">
+            <div class="text-center py-8 text-gray-500">
+                ⏳ 加载设备列表...
+            </div>
+        </div>
+    </div>
+    
+    <!-- 操作按钮 -->
+    <div class="flex justify-end space-x-4">
+        <button class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-medium transition">
+            📋 仅预览
+        </button>
+        <button class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-medium transition">
+            🚀 推送配置
+        </button>
+    </div>
+</div>
+
+<script>
+const templates = {
+    vlan: `! VLAN Configuration
+vlan 10
+ name Management
+ description Management VLAN
+vlan 20
+ name Users
+ description User VLAN
+vlan 30
+ name Servers
+ description Server VLAN`,
+    interface: `! Interface Configuration
+interface GigabitEthernet0/1
+ description User Port
+ switchport mode access
+ switchport access vlan 20
+ no shutdown`,
+    acl: `! ACL Configuration
+ip access-list extended WEB-ACCESS
+ permit tcp 192.168.1.0 0.0.0.255 any eq 80
+ permit tcp 192.168.1.0 0.0.0.255 any eq 443
+ deny ip any any`,
+    ntp: `! NTP Configuration
+ntp server 10.0.0.1 prefer
+ntp server 10.0.0.2
+clock timezone CST 8`
+};
+
+function loadTemplate(name) {
+    document.getElementById('config-preview').textContent = templates[name] || '! Template not found';
+}
+</script>
+{% endblock %}

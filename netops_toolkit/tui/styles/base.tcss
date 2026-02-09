@@ -1,0 +1,311 @@
+/* NetOps Toolkit TUI - 基础样式 */
+/* 定义布局、尺寸、通用样式，不包含颜色 */
+
+/* ========== 全局样式 ========== */
+
+Screen {
+    layout: vertical;
+}
+
+/* ========== Header样式 ========== */
+
+Header {
+    dock: top;
+    height: 3;
+    content-align: center middle;
+}
+
+/* ========== Footer样式 ========== */
+
+Footer {
+    dock: bottom;
+}
+
+/* ========== 通用容器 ========== */
+
+.container {
+    width: 100%;
+    height: 100%;
+    padding: 1 2;
+}
+
+.panel {
+    border: round;
+    padding: 1 2;
+    margin: 1;
+}
+
+.panel-title {
+    text-style: bold;
+    padding: 0 1;
+}
+
+/* ========== 主界面布局 ========== */
+
+#main-container {
+    layout: horizontal;
+    width: 100%;
+    height: 100%;
+}
+
+#sidebar {
+    width: 30;
+    min-width: 25;
+    max-width: 40;
+    height: 100%;
+    border-right: solid;
+}
+
+#content-area {
+    width: 1fr;
+    height: 100%;
+}
+
+/* ========== 插件列表 ========== */
+
+#plugin-list {
+    height: 100%;
+    padding: 1;
+}
+
+.plugin-item {
+    height: 3;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    content-align: left middle;
+}
+
+.plugin-item:hover {
+    text-style: bold;
+}
+
+.plugin-item:focus {
+    text-style: bold reverse;
+}
+
+.plugin-item.selected {
+    text-style: bold;
+}
+
+/* 分类组 */
+.category-group {
+    margin: 1 0;
+}
+
+.category-header {
+    height: 2;
+    padding: 0 1;
+    text-style: bold;
+}
+
+.category-header:hover {
+    text-style: bold underline;
+}
+
+/* ========== 参数表单 ========== */
+
+#param-form {
+    padding: 1 2;
+}
+
+.form-row {
+    height: auto;
+    margin: 1 0;
+}
+
+.form-label {
+    width: 15;
+    content-align: right middle;
+    padding-right: 1;
+}
+
+.form-input {
+    width: 1fr;
+}
+
+.form-hint {
+    text-style: italic;
+    padding-left: 16;
+}
+
+/* ========== 按钮样式 ========== */
+
+Button {
+    min-width: 10;
+    margin: 0 1;
+}
+
+Button:hover {
+    text-style: bold;
+}
+
+Button:focus {
+    text-style: bold;
+}
+
+.btn-primary {
+    min-width: 12;
+}
+
+.btn-secondary {
+    min-width: 10;
+}
+
+.btn-danger {
+    min-width: 10;
+}
+
+/* 操作按钮组 */
+.action-buttons {
+    layout: horizontal;
+    align: center middle;
+    height: auto;
+    padding: 1 0;
+}
+
+/* ========== 结果表格 ========== */
+
+#result-table {
+    height: 1fr;
+    margin: 1;
+}
+
+DataTable {
+    height: 100%;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    text-style: reverse;
+}
+
+DataTable:focus > .datatable--cursor {
+    text-style: bold reverse;
+}
+
+/* ========== 进度面板 ========== */
+
+#progress-panel {
+    height: auto;
+    min-height: 5;
+    padding: 1 2;
+    margin: 1;
+    border: round;
+}
+
+ProgressBar {
+    padding: 1 0;
+}
+
+.progress-label {
+    width: 100%;
+    content-align: center middle;
+}
+
+/* ========== 日志查看器 ========== */
+
+#log-viewer {
+    height: 10;
+    min-height: 5;
+    max-height: 20;
+    border: round;
+    margin: 1;
+}
+
+RichLog {
+    height: 100%;
+    scrollbar-gutter: stable;
+}
+
+/* ========== 状态栏 ========== */
+
+#status-bar {
+    dock: bottom;
+    height: 1;
+    padding: 0 2;
+}
+
+.status-item {
+    padding: 0 2;
+}
+
+/* ========== 面包屑导航 ========== */
+
+#breadcrumb {
+    height: 1;
+    padding: 0 2;
+    margin-bottom: 1;
+}
+
+.breadcrumb-item {
+    padding: 0 1;
+}
+
+.breadcrumb-item:hover {
+    text-style: underline;
+}
+
+.breadcrumb-separator {
+    padding: 0 1;
+}
+
+/* ========== 工具提示 ========== */
+
+.tooltip {
+    layer: tooltip;
+    padding: 1 2;
+    border: round;
+    max-width: 50;
+}
+
+/* ========== 搜索框 ========== */
+
+#search-box {
+    height: 3;
+    padding: 0 2;
+    margin: 1 0;
+}
+
+#search-input {
+    width: 100%;
+}
+
+/* ========== 模态框 ========== */
+
+.modal-screen {
+    align: center middle;
+}
+
+.modal-dialog {
+    width: 60;
+    height: auto;
+    min-height: 10;
+    max-height: 80%;
+    padding: 1 2;
+    border: thick;
+}
+
+.modal-title {
+    text-style: bold;
+    text-align: center;
+    padding: 1 0;
+}
+
+.modal-content {
+    height: auto;
+    padding: 1 0;
+}
+
+.modal-actions {
+    layout: horizontal;
+    align: center middle;
+    height: auto;
+    padding: 1 0;
+}
+
+/* ========== 响应式布局 ========== */
+/* 注: Textual CSS不支持@media查询 */
+/* 侧边栏自动适应 */

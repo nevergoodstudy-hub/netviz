@@ -1036,6 +1036,29 @@ def config_diff(
         plugin.cleanup()
 
 
+@app.command(name="tui")
+def launch_tui():
+    """
+    启动现代TUI界面
+    
+    全屏终端用户界面，支持：
+    - 鼠标/键盘双模式交互
+    - 实时进度显示
+    - 主题切换 (T键)
+    - 命令面板 (Ctrl+P)
+    
+    示例:
+        netops tui
+    """
+    try:
+        from netops_toolkit.tui.app import run_tui
+        run_tui()
+    except ImportError as e:
+        console.print(f"[red]无法加载TUI模块: {e}[/red]")
+        console.print("[yellow]请确保已安装textual依赖: pip install textual[/yellow]")
+        raise typer.Exit(1)
+
+
 @app.command(name="whois")
 def whois_query(
     target: str = typer.Argument(..., help="域名或IP地址"),

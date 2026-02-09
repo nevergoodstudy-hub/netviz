@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - NetOps Toolkit</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Alpine.js (轻量级交互) -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- 自定义 Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* 加载动画 */
+        .htmx-indicator {
+            display: none;
+        }
+        .htmx-request .htmx-indicator {
+            display: inline-block;
+        }
+        .htmx-request.htmx-indicator {
+            display: inline-block;
+        }
+        
+        /* 状态颜色 */
+        .status-online { color: #10b981; }
+        .status-offline { color: #ef4444; }
+        .status-unknown { color: #f59e0b; }
+        
+        /* 表格斑马纹 */
+        tbody tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        .dark tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900" x-data="{ darkMode: false, sidebarOpen: true }">
+    <div class="min-h-full">
+        <!-- 导航栏 -->
+        <nav class="bg-primary-600 dark:bg-gray-800 shadow-lg">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 items-center justify-between">
+                    <!-- Logo -->
+                    <div class="flex items-center">
+                        <a href="/" class="flex items-center">
+                            <span class="text-2xl mr-2">🔧</span>
+                            <span class="text-white text-xl font-bold">NetOps Toolkit</span>
+                        </a>
+                    </div>
+                    
+                    <!-- 导航链接 -->
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="/" 
+                               class="{% if page == 'dashboard' %}bg-primary-700 text-white{% else %}text-primary-100 hover:bg-primary-500{% endif %} rounded-md px-3 py-2 text-sm font-medium transition">
+                                📊 仪表板
+                            </a>
+                            <a href="/devices" 
+                               class="{% if page == 'devices' %}bg-primary-700 text-white{% else %}text-primary-100 hover:bg-primary-500{% endif %} rounded-md px-3 py-2 text-sm font-medium transition">
+                                🖥️ 设备管理
+                            </a>
+                            <a href="/monitoring" 
+                               class="{% if page == 'monitoring' %}bg-primary-700 text-white{% else %}text-primary-100 hover:bg-primary-500{% endif %} rounded-md px-3 py-2 text-sm font-medium transition">
+                                📈 实时监控
+                            </a>
+                            <a href="/config" 
+                               class="{% if page == 'config' %}bg-primary-700 text-white{% else %}text-primary-100 hover:bg-primary-500{% endif %} rounded-md px-3 py-2 text-sm font-medium transition">
+                                ⚙️ 配置中心
+                            </a>
+                            <a href="/audit" 
+                               class="{% if page == 'audit' %}bg-primary-700 text-white{% else %}text-primary-100 hover:bg-primary-500{% endif %} rounded-md px-3 py-2 text-sm font-medium transition">
+                                📝 审计日志
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧工具 -->
+                    <div class="flex items-center space-x-4">
+                        <!-- 主题切换 -->
+                        <button @click="darkMode = !darkMode; document.documentElement.classList.toggle('dark')"
+                                class="text-primary-100 hover:text-white p-2 rounded-md transition">
+                            <span x-show="!darkMode">🌙</span>
+                            <span x-show="darkMode">☀️</span>
+                        </button>
+                        
+                        <!-- API 文档链接 -->
+                        <a href="/api/docs" target="_blank" 
+                           class="text-primary-100 hover:text-white text-sm">
+                            📚 API
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 移动端导航 -->
+            <div class="md:hidden px-2 pb-3 pt-2 space-y-1">
+                <a href="/" class="{% if page == 'dashboard' %}bg-primary-700{% endif %} text-white block rounded-md px-3 py-2 text-base font-medium">📊 仪表板</a>
+                <a href="/devices" class="{% if page == 'devices' %}bg-primary-700{% endif %} text-white block rounded-md px-3 py-2 text-base font-medium">🖥️ 设备</a>
+                <a href="/monitoring" class="{% if page == 'monitoring' %}bg-primary-700{% endif %} text-white block rounded-md px-3 py-2 text-base font-medium">📈 监控</a>
+                <a href="/audit" class="{% if page == 'audit' %}bg-primary-700{% endif %} text-white block rounded-md px-3 py-2 text-base font-medium">📝 审计</a>
+            </div>
+        </nav>
+
+        <!-- 主内容 -->
+        <main class="mx-auto max-w-7xl py-6 px-4 sm:px-6 lg:px-8">
+            {% block content %}{% endblock %}
+        </main>
+        
+        <!-- 页脚 -->
+        <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-8">
+            <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+                <p class="text-center text-sm text-gray-500 dark:text-gray-400">
+                    NetOps Toolkit v1.8.0 | 
+                    <a href="/api/docs" class="text-primary-600 hover:underline">API 文档</a> |
+                    <a href="https://github.com/netops-toolkit" class="text-primary-600 hover:underline">GitHub</a>
+                </p>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- 全局 HTMX 配置 -->
+    <script>
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            // 可以在这里添加全局请求头
+        });
+        
+        document.body.addEventListener('htmx:afterSwap', (event) => {
+            // 内容更新后的回调
+        });
+    </script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
