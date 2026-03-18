@@ -15,6 +15,7 @@ from app.api import pcap, analysis, ai, settings as settings_api, websocket, cap
 from app.core.config import settings
 from app.core.database import close_db, init_db
 from app.core.logging import setup_logging, get_logger
+from app.middleware import RateLimitMiddleware
 
 # 配置日志系统
 setup_logging(
@@ -54,6 +55,9 @@ app = FastAPI(
     docs_url="/api/docs" if settings.debug else None,
     redoc_url="/api/redoc" if settings.debug else None,
 )
+
+# 添加速率限制中间件（每分钟60个请求）
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 
 # CORS 中间件
 app.add_middleware(
