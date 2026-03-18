@@ -152,6 +152,21 @@ async def upload_pcap(
     if file_ext not in allowed_extensions:
         raise HTTPException(status_code=400, detail=f"不支持的文件格式: {file_ext}")
 
+    # 读取文件头验证PCAP魔术字节
+    magic_bytes = await file.read(4)
+    await file.seek(0)  # 重置文件指针
+
+    # PCAP magic numbers
+    PCAP_MAGIC_LE = b'\xd4\xc3\xb2\xa1'  # Little-endian
+    PCAP_MAGIC_BE = b'\xa1\xb2\xc3\xd4'  # Big-endian
+    PCAPNG_MAGIC = b'\x0a\x0d\x0d\x0a'   # PCAPNG
+
+    if magic_bytes not in [PCAP_MAGIC_LE, PCAP_MAGIC_BE, PCAPNG_MAGIC]:
+        raise HTTPException(
+            status_code=400,
+            detail="文件内容不是有效的PCAP格式（魔术字节验证失败）"
+        )
+
     # 生成唯一文件名
     unique_filename = f"{uuid.uuid4().hex}{file_ext}"
     file_path = settings.upload_dir / unique_filename
@@ -167,15 +182,16 @@ async def upload_pcap(
             sha256_hash.update(chunk)
             file_size += len(chunk)
 
-    file_hash = sha256_hash.hexdigest()
+            # 防止无限读取
+            if file_size > settings.max_upload_size:
+                f.close()
+                file_path.unlink()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"文件过大，最大允许 {settings.max_upload_size // (1024*1024)} MB",
+                )
 
-    # 检查文件大小
-    if file_size > settings.max_upload_size:
-        file_path.unlink()
-        raise HTTPException(
-            status_code=400,
-            detail=f"文件过大，最大允许 {settings.max_upload_size // (1024*1024)} MB",
-        )
+    file_hash = sha256_hash.hexdigest()
 
     # 创建数据库记录
     pcap_file = PcapFile(
