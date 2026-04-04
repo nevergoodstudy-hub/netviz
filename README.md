@@ -7,6 +7,40 @@
 
 > 当前仓库状态（2026-04）：`ruff check .` 通过，`pytest` 通过（511 passed / 29 skipped）。
 
+## ✅ 快速验证（30 秒）
+
+```bash
+python -m ruff check .
+python -m pytest -q
+```
+
+如果你第一次接触本仓库，建议先跑完上面两条命令，确保环境一致后再开始开发。
+
+## 🧭 架构一览（Clean Architecture）
+
+```text
+Presentation (CLI / TUI / Web)
+    ↓
+Application (Use Cases / DTO / Ports)
+    ↓
+Domain (Entities / Rules / Events)
+    ↑
+Infrastructure (Network / Persistence / Security Adapters)
+```
+
+设计目标：
+- 业务规则与外部依赖解耦
+- 插件能力可扩展、可替换
+- 测试更聚焦且更稳定
+
+## 🎬 演示（占位，可替换为你自己的截图/GIF）
+
+- CLI 演示图：`docs/assets/demo-cli.png`
+- TUI 演示图：`docs/assets/demo-tui.png`
+- Web 演示图：`docs/assets/demo-web.png`
+
+> 建议后续补充 10~20 秒短 GIF（启动、执行、导出结果三段），对 Star 转化会明显更友好。
+
 ## 为什么选择 NetOps Toolkit
 
 - 一套工具覆盖日常网络诊断、批量执行、巡检审计、报表导出
@@ -84,7 +118,7 @@
 | OpenBSD | 6+ | 支持 |
 
 ### Python 版本要求
-- Python 3.14 或更高版本
+- Python 3.10 或更高版本
 
 ### 方式1: 从源码安装
 
