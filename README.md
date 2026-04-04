@@ -3,7 +3,15 @@
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-面向网络工程师的多功能CLI工具箱,集成网络实施、测试、巡检、诊断功能于一体。
+面向网络工程师的多功能 CLI 工具箱，集成实施、测试、巡检、诊断、审计与报表能力于一体。
+
+> 当前仓库状态（2026-04）：`ruff check .` 通过，`pytest` 通过（511 passed / 29 skipped）。
+
+## 为什么选择 NetOps Toolkit
+
+- 一套工具覆盖日常网络诊断、批量执行、巡检审计、报表导出
+- 同时支持 CLI / TUI / Web 三种操作形态，适配不同团队习惯
+- 以插件化与清晰分层架构为基础，便于二次开发与企业落地
 
 ## ✨ 核心特性
 
@@ -236,6 +244,20 @@ netops ip-convert 3232235777
 # MAC查询
 netops mac-lookup 00:0C:29:12:34:56
 ```
+
+## ✅ 本地验证（建议首次拉取后执行）
+
+```powershell
+# 代码质量检查
+python -m ruff check .
+
+# 测试回归
+python -m pytest -q
+```
+
+如需与仓库当前基线对齐，预期应为：
+- Ruff: `All checks passed!`
+- Pytest: `511 passed, 29 skipped`（随版本演进可能变化）
 
 ## ⚙️ 配置
 

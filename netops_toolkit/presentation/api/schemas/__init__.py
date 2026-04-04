@@ -1,5 +1,4 @@
-"""
-API 请求/响应 Schema
+"""API 请求/响应 Schema
 
 表示层 API Schema 复用 application/dto 定义,
 并添加 HTTP 层特有的包装 (如分页、错误响应格式)。
@@ -7,21 +6,20 @@ API 请求/响应 Schema
 
 from __future__ import annotations
 
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
 # 复用应用层 DTO
 from netops_toolkit.application.dto.device_dto import (
-    DeviceDTO,
     DeviceDetailDTO,
+    DeviceDTO,
     DeviceFilterDTO,
     DeviceGroupDTO,
 )
 from netops_toolkit.application.dto.network_dto import (
     PingBatchResponseDTO,
     PingRequestDTO,
-    PingResultDTO,
     PortScanBatchResponseDTO,
     PortScanRequestDTO,
     SSHBatchResponseDTO,
@@ -39,7 +37,7 @@ class ApiResponse(BaseModel, Generic[T]):
 
     status: str = "ok"
     message: str = ""
-    data: Optional[T] = None
+    data: T | None = None
 
 
 class ApiErrorResponse(BaseModel):
@@ -48,14 +46,14 @@ class ApiErrorResponse(BaseModel):
     status: str = "error"
     message: str
     error_code: str = ""
-    details: Dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
     """分页响应"""
 
     status: str = "ok"
-    data: List[T] = Field(default_factory=list)
+    data: list[T] = Field(default_factory=list)
     total: int = 0
     page: int = 1
     page_size: int = 20
@@ -65,7 +63,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
 # ── 设备 API Schema ──
 
 
-class DeviceListResponse(ApiResponse[List[DeviceDTO]]):
+class DeviceListResponse(ApiResponse[list[DeviceDTO]]):
     """设备列表响应"""
 
     pass
@@ -77,7 +75,7 @@ class DeviceDetailResponse(ApiResponse[DeviceDetailDTO]):
     pass
 
 
-class DeviceGroupListResponse(ApiResponse[List[DeviceGroupDTO]]):
+class DeviceGroupListResponse(ApiResponse[list[DeviceGroupDTO]]):
     """设备组列表响应"""
 
     pass
@@ -121,7 +119,7 @@ class MonitoringStatusResponse(BaseModel):
 
     status: str = "ok"
     timestamp: str = ""
-    devices: List[MonitoringDeviceStatus] = Field(default_factory=list)
+    devices: list[MonitoringDeviceStatus] = Field(default_factory=list)
 
 
 # ── 审计 API Schema ──
@@ -130,8 +128,8 @@ class MonitoringStatusResponse(BaseModel):
 class AuditLogEntry(BaseModel):
     """审计日志条目"""
 
-    id: Optional[int] = None
-    timestamp: Optional[str] = None
+    id: int | None = None
+    timestamp: str | None = None
     event_type: str = ""
     device_name: str = "-"
     device_ip: str = "-"
@@ -144,7 +142,7 @@ class AuditLogResponse(BaseModel):
     """审计日志响应"""
 
     status: str = "ok"
-    logs: List[AuditLogEntry] = Field(default_factory=list)
+    logs: list[AuditLogEntry] = Field(default_factory=list)
     count: int = 0
 
 

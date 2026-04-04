@@ -1,23 +1,27 @@
-"""
-配置备份插件
+"""配置备份插件
 
 支持多厂商网络设备配置备份,包括版本管理和差异对比。
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
-from pathlib import Path
 import difflib
 import hashlib
 import json
-import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from netops_toolkit.plugins.base import Plugin, PluginResult, ResultStatus, ParamSpec, register_plugin
-from netops_toolkit.core.logger import get_logger
-from netops_toolkit.utils.ssh_utils import SSHConnection, check_netmiko_available
 from netops_toolkit.config.device_inventory import DeviceInventory
+from netops_toolkit.core.logger import get_logger
+from netops_toolkit.plugins.base import (
+    ParamSpec,
+    Plugin,
+    PluginResult,
+    ResultStatus,
+    register_plugin,
+)
+from netops_toolkit.utils.ssh_utils import SSHConnection, check_netmiko_available
 
 logger = get_logger(__name__)
 
@@ -42,19 +46,19 @@ VENDOR_CONFIG_COMMANDS = {
 @register_plugin
 class ConfigBackupPlugin(Plugin):
     """配置备份插件"""
-    
+
     name = "config_backup"
     description = "设备配置备份"
     category = "device_mgmt"
     version = "1.0.0"
-    
-    def validate_dependencies(self) -> Tuple[bool, Optional[str]]:
+
+    def validate_dependencies(self) -> tuple[bool, str | None]:
         """验证依赖"""
         if not check_netmiko_available():
             return False, "Netmiko库未安装, 请运行: pip install netmiko"
         return True, None
-    
-    def get_required_params(self) -> List[ParamSpec]:
+
+    def get_required_params(self) -> list[ParamSpec]:
         """获取参数规格"""
         return [
             ParamSpec(
@@ -100,7 +104,7 @@ class ConfigBackupPlugin(Plugin):
                 default="./backups",
             ),
         ]
-    
+
     def run(
         self,
         targets: str = "",
@@ -114,8 +118,7 @@ class ConfigBackupPlugin(Plugin):
         compare_with_last: bool = True,
         **kwargs,
     ) -> PluginResult:
-        """
-        执行配置备份
+        """执行配置备份
         
         参数:
             targets: 目标设备列表 (IP或主机名)
@@ -130,7 +133,7 @@ class ConfigBackupPlugin(Plugin):
         """
         # 处理targets参数
         target_list = [t.strip() for t in targets.split(",") if t.strip()] if targets else []
-        
+
         # 如果指定了设备组,从设备清单获取设备
         device_info_map = {}
         if group and not target_list:
@@ -146,20 +149,20 @@ class ConfigBackupPlugin(Plugin):
                 if d.get("host"):
                     device_info_map[d["host"]] = d
             target_list = list(device_info_map.keys())
-        
+
         if not target_list:
             return PluginResult(
                 status=ResultStatus.FAILED,
                 message="未指定目标设备",
                 data={}
             )
-        
+
         # 确保备份目录存在
         backup_path = Path(backup_dir)
         backup_path.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(f"开始备份 {len(target_list)} 台设备配置到 {backup_dir}")
-        
+
         # 执行备份
         results = self._backup_devices(
             targets=target_list,
@@ -172,12 +175,12 @@ class ConfigBackupPlugin(Plugin):
             timeout=timeout,
             compare_with_last=compare_with_last,
         )
-        
+
         # 统计结果
         success_count = sum(1 for r in results.values() if r["success"])
         fail_count = len(results) - success_count
         changed_count = sum(1 for r in results.values() if r.get("changed"))
-        
+
         return PluginResult(
             status=ResultStatus.SUCCESS if fail_count == 0 else ResultStatus.PARTIAL,
             message=f"备份完成: {success_count} 成功, {fail_count} 失败, {changed_count} 有变更",
@@ -193,11 +196,11 @@ class ConfigBackupPlugin(Plugin):
                 }
             }
         )
-    
+
     def _backup_devices(
         self,
-        targets: List[str],
-        device_info_map: Dict[str, Dict],
+        targets: list[str],
+        device_info_map: dict[str, dict],
         username: str,
         password: str,
         device_type: str,
@@ -205,10 +208,10 @@ class ConfigBackupPlugin(Plugin):
         max_workers: int,
         timeout: int,
         compare_with_last: bool,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """批量备份设备"""
         results = {}
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             for target in targets:
@@ -216,7 +219,7 @@ class ConfigBackupPlugin(Plugin):
                 info = device_info_map.get(target, {})
                 dev_username = info.get("username", username)
                 dev_type = info.get("device_type", device_type)
-                
+
                 futures[executor.submit(
                     self._backup_single_device,
                     host=target,
@@ -227,7 +230,7 @@ class ConfigBackupPlugin(Plugin):
                     timeout=timeout,
                     compare_with_last=compare_with_last,
                 )] = target
-            
+
             for future in as_completed(futures):
                 target = futures[future]
                 try:
@@ -239,9 +242,9 @@ class ConfigBackupPlugin(Plugin):
                         "success": False,
                         "error": str(e),
                     }
-        
+
         return results
-    
+
     def _backup_single_device(
         self,
         host: str,
@@ -251,11 +254,11 @@ class ConfigBackupPlugin(Plugin):
         backup_path: Path,
         timeout: int,
         compare_with_last: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """备份单个设备"""
         start_time = time.time()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         try:
             with SSHConnection(
                 host=host,
@@ -270,38 +273,38 @@ class ConfigBackupPlugin(Plugin):
                         "error": "连接失败",
                         "duration": time.time() - start_time,
                     }
-                
+
                 # 获取配置命令
                 config_cmd = VENDOR_CONFIG_COMMANDS.get(
                     device_type,
                     "show running-config"
                 )
-                
+
                 # 执行配置获取
                 config = conn.execute_command(config_cmd)
-                
+
                 if not config:
                     return {
                         "success": False,
                         "error": "获取配置失败",
                         "duration": time.time() - start_time,
                     }
-                
+
                 # 创建设备备份目录
                 device_dir = backup_path / self._sanitize_hostname(host)
                 device_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # 保存配置文件
                 config_file = device_dir / f"config_{timestamp}.txt"
                 config_file.write_text(config, encoding="utf-8")
-                
+
                 # 更新latest链接/文件
                 latest_file = device_dir / "config_latest.txt"
-                
+
                 # 检查是否有变更
                 changed = False
                 diff_summary = None
-                
+
                 if compare_with_last and latest_file.exists():
                     last_config = latest_file.read_text(encoding="utf-8")
                     if last_config != config:
@@ -311,10 +314,10 @@ class ConfigBackupPlugin(Plugin):
                         )
                 else:
                     changed = True  # 首次备份视为变更
-                
+
                 # 更新latest文件
                 latest_file.write_text(config, encoding="utf-8")
-                
+
                 # 保存元数据
                 self._save_metadata(
                     device_dir=device_dir,
@@ -324,7 +327,7 @@ class ConfigBackupPlugin(Plugin):
                     config_hash=hashlib.md5(config.encode()).hexdigest(),
                     changed=changed,
                 )
-                
+
                 return {
                     "success": True,
                     "error": None,
@@ -334,7 +337,7 @@ class ConfigBackupPlugin(Plugin):
                     "config_size": len(config),
                     "duration": time.time() - start_time,
                 }
-                
+
         except Exception as e:
             logger.error(f"备份失败 {host}: {e}")
             return {
@@ -342,21 +345,21 @@ class ConfigBackupPlugin(Plugin):
                 "error": str(e),
                 "duration": time.time() - start_time,
             }
-    
+
     def _sanitize_hostname(self, hostname: str) -> str:
         """清理主机名用于文件名"""
         return hostname.replace(".", "_").replace(":", "_")
-    
+
     def _generate_diff_summary(
         self,
         old_config: str,
         new_config: str,
         hostname: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """生成配置差异摘要"""
         old_lines = old_config.splitlines()
         new_lines = new_config.splitlines()
-        
+
         diff = list(difflib.unified_diff(
             old_lines,
             new_lines,
@@ -364,16 +367,16 @@ class ConfigBackupPlugin(Plugin):
             tofile=f"{hostname}_new",
             lineterm="",
         ))
-        
+
         added = sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
         removed = sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
-        
+
         return {
             "added_lines": added,
             "removed_lines": removed,
             "diff_preview": "\n".join(diff[:50]),  # 前50行差异
         }
-    
+
     def _save_metadata(
         self,
         device_dir: Path,
@@ -385,7 +388,7 @@ class ConfigBackupPlugin(Plugin):
     ) -> None:
         """保存备份元数据"""
         metadata_file = device_dir / "metadata.json"
-        
+
         # 读取现有元数据
         metadata = {"host": host, "device_type": device_type, "backups": []}
         if metadata_file.exists():
@@ -393,18 +396,18 @@ class ConfigBackupPlugin(Plugin):
                 metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        
+
         # 添加新记录
         metadata["backups"].append({
             "timestamp": timestamp,
             "hash": config_hash,
             "changed": changed,
         })
-        
+
         # 只保留最近100条记录
         metadata["backups"] = metadata["backups"][-100:]
         metadata["last_backup"] = timestamp
-        
+
         # 保存
         metadata_file.write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False),
@@ -415,9 +418,8 @@ class ConfigBackupPlugin(Plugin):
 def compare_configs(
     config1_path: str,
     config2_path: str,
-) -> Dict[str, Any]:
-    """
-    对比两个配置文件
+) -> dict[str, Any]:
+    """对比两个配置文件
     
     Args:
         config1_path: 第一个配置文件路径
@@ -425,11 +427,12 @@ def compare_configs(
         
     Returns:
         差异信息
+
     """
     try:
         config1 = Path(config1_path).read_text(encoding="utf-8")
         config2 = Path(config2_path).read_text(encoding="utf-8")
-        
+
         diff = list(difflib.unified_diff(
             config1.splitlines(),
             config2.splitlines(),
@@ -437,12 +440,16 @@ def compare_configs(
             tofile=config2_path,
             lineterm="",
         ))
-        
+
         return {
             "identical": len(diff) == 0,
             "diff": "\n".join(diff),
-            "added": sum(1 for l in diff if l.startswith("+") and not l.startswith("+++")),
-            "removed": sum(1 for l in diff if l.startswith("-") and not l.startswith("---")),
+            "added": sum(
+                1 for diff_line in diff if diff_line.startswith("+") and not diff_line.startswith("+++")
+            ),
+            "removed": sum(
+                1 for diff_line in diff if diff_line.startswith("-") and not diff_line.startswith("---")
+            ),
         }
     except Exception as e:
         return {
@@ -451,9 +458,8 @@ def compare_configs(
         }
 
 
-def list_backups(backup_dir: str, host: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    列出备份记录
+def list_backups(backup_dir: str, host: str | None = None) -> list[dict[str, Any]]:
+    """列出备份记录
     
     Args:
         backup_dir: 备份目录
@@ -461,21 +467,22 @@ def list_backups(backup_dir: str, host: Optional[str] = None) -> List[Dict[str, 
         
     Returns:
         备份记录列表
+
     """
     backup_path = Path(backup_dir)
     if not backup_path.exists():
         return []
-    
+
     backups = []
-    
+
     for device_dir in backup_path.iterdir():
         if not device_dir.is_dir():
             continue
-        
+
         # 过滤主机
         if host and host.replace(".", "_") != device_dir.name:
             continue
-        
+
         metadata_file = device_dir / "metadata.json"
         if metadata_file.exists():
             try:
@@ -489,7 +496,7 @@ def list_backups(backup_dir: str, host: Optional[str] = None) -> List[Dict[str, 
                 })
             except Exception:
                 pass
-    
+
     return backups
 
 
