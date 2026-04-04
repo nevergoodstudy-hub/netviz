@@ -1,6 +1,6 @@
 # NetOps Toolkit - 网络工程实施及测试工具集
 
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 面向网络工程师的多功能 CLI 工具箱，集成实施、测试、巡检、诊断、审计与报表能力于一体。
@@ -186,6 +186,32 @@ pkg install mtr
 ```
 
 ## 🚀 快速开始
+
+### ⚡ 一分钟上手（复制即跑）
+
+```powershell
+# 1) 安装
+pip install -e .
+
+# 2) 验证
+python -m ruff check .
+python -m pytest -q
+
+# 3) 立即体验（任选其一）
+netops tui
+netops web
+netops ping 8.8.8.8 -c 4
+```
+
+### 🎯 典型场景（从需求直达命令）
+
+| 场景 | 推荐命令 | 结果产物 |
+|---|---|---|
+| 值班快速排障（连通性） | `netops ping 8.8.8.8 -c 4` | 连通率、RTT 统计 |
+| 现场链路定位（逐跳） | `netops traceroute 8.8.8.8` | 路径与潜在拥塞节点 |
+| 设备批量巡检 | `netops ssh-batch -g core_switches -c "show version"` | 多设备执行汇总 |
+| 变更前后对比 | `netops config-diff old.txt new.txt` | 差异高亮输出 |
+| 质量基线留档 | `netops quality 8.8.8.8 -c 50` | 延迟/抖动/丢包趋势 |
 
 ### Web UI 模式 (新!)
 ```powershell
