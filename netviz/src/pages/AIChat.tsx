@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Send, Loader2, Bot, User, Sparkles } from 'lucide-react'
 import { pcapApi, aiApi } from '@/services/api'
-import { toast } from '@/components/ui/Toaster'
+import { toast } from '@/components/ui/toast-store'
 import { cn } from '@/lib/utils'
 import type { AIProvider } from '@/types'
 
@@ -33,7 +33,7 @@ export default function AIChat() {
         provider,
       }),
     onSuccess: (res) => {
-      setMessages((prev) => [...prev, { role: 'assistant', content: res.data.message || res.data.response || '' }])
+      setMessages((prev) => [...prev, { role: 'assistant', content: res.data.message }])
       if (res.data.conversation_id) {
         setConversationId(res.data.conversation_id)
       }
@@ -58,11 +58,11 @@ export default function AIChat() {
   })
 
   const analyzeMutation = useMutation({
-    mutationFn: (type: string) => aiApi.analyze(selectedPcap!, type, provider as AIProvider),
+    mutationFn: (query: string) => aiApi.analyze(selectedPcap!, query, provider),
     onSuccess: (res) => {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: res.data.analysis },
+        { role: 'assistant', content: res.data.answer },
       ])
     },
     onError: () => {
@@ -143,8 +143,9 @@ export default function AIChat() {
               </button>
               <button
                 onClick={() => {
-                  setMessages((prev) => [...prev, { role: 'user', content: '分析安全威胁' }])
-                  analyzeMutation.mutate('security')
+                  const query = '请分析这个 PCAP 中的安全威胁、异常行为和优先排查方向。'
+                  setMessages((prev) => [...prev, { role: 'user', content: query }])
+                  analyzeMutation.mutate(query)
                 }}
                 disabled={isLoading}
                 className="px-4 py-2 bg-accent rounded-lg hover:bg-accent/80 text-sm"
@@ -153,8 +154,9 @@ export default function AIChat() {
               </button>
               <button
                 onClick={() => {
-                  setMessages((prev) => [...prev, { role: 'user', content: '分析网络性能' }])
-                  analyzeMutation.mutate('performance')
+                  const query = '请分析这个 PCAP 的网络性能瓶颈、热点连接和时序特征。'
+                  setMessages((prev) => [...prev, { role: 'user', content: query }])
+                  analyzeMutation.mutate(query)
                 }}
                 disabled={isLoading}
                 className="px-4 py-2 bg-accent rounded-lg hover:bg-accent/80 text-sm"

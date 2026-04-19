@@ -1,6 +1,6 @@
 """
 NetViz 分析 API 接口
-提供流量分析、异常检测、威胁情报等功能
+提供流量分析、异常检测与告警查询
 """
 
 from datetime import datetime, timezone
@@ -8,17 +8,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.pcap import Packet, Connection, DnsRecord, HttpTransaction
-from app.models.analysis import Alert
+from app.models.analysis import Alert, AlertType
+from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, PcapFile
 
 router = APIRouter()
-
-
-# ==================== Pydantic 模型 ====================
 
 
 class ProtocolStats(BaseModel):
@@ -39,11 +36,13 @@ class TimeSeriesPoint(BaseModel):
 
 
 class TopTalker(BaseModel):
-    """Top通信者"""
+    """Top 通信者"""
 
     ip: str
-    packets: int
-    bytes: int
+    packets_sent: int
+    packets_received: int
+    bytes_sent: int
+    bytes_received: int
     connections: int
 
 
@@ -70,10 +69,23 @@ class AlertResponse(BaseModel):
     dest_ip: Optional[str]
     mitre_tactic: Optional[str]
     mitre_technique: Optional[str]
-    created_at: str
+    detected_at: str
 
 
-# ==================== 统计分析接口 ====================
+def _alert_to_response(alert: Alert) -> AlertResponse:
+    return AlertResponse(
+        id=alert.id,
+        pcap_id=alert.pcap_file_id,
+        type=alert.alert_type,
+        severity=alert.severity,
+        title=alert.title,
+        description=alert.description,
+        source_ip=alert.src_ip,
+        dest_ip=alert.dst_ip,
+        mitre_tactic=alert.mitre_tactic,
+        mitre_technique=alert.mitre_technique,
+        detected_at=alert.detected_at.isoformat(),
+    )
 
 
 @router.get("/protocol-distribution/{pcap_id}", response_model=list[ProtocolStats])
@@ -88,7 +100,7 @@ async def get_protocol_distribution(
             func.count(Packet.id).label("count"),
             func.sum(Packet.length).label("bytes"),
         )
-        .where(Packet.pcap_id == pcap_id)
+        .where(Packet.pcap_file_id == pcap_id)
         .group_by(Packet.protocol)
         .order_by(func.count(Packet.id).desc())
     )
@@ -101,7 +113,7 @@ async def get_protocol_distribution(
             protocol=row.protocol or "Unknown",
             count=row.count,
             bytes=row.bytes or 0,
-            percentage=round(row.count / total_packets * 100, 2) if total_packets > 0 else 0,
+            percentage=round((row.count / total_packets) * 100, 2) if total_packets else 0.0,
         )
         for row in rows
     ]
@@ -115,29 +127,25 @@ async def get_time_series(
 ):
     """获取时间序列数据"""
     result = await db.execute(
-        select(
-            func.min(Packet.timestamp).label("min_ts"),
-            func.max(Packet.timestamp).label("max_ts"),
-        ).where(Packet.pcap_id == pcap_id)
-    )
-    time_range = result.first()
-
-    if not time_range or not time_range.min_ts:
-        return []
-
-    result = await db.execute(
-        select(Packet.timestamp, Packet.length).where(Packet.pcap_id == pcap_id)
+        select(Packet.timestamp, Packet.length)
+        .where(Packet.pcap_file_id == pcap_id)
+        .order_by(Packet.timestamp)
     )
     packets = result.all()
 
-    time_buckets: dict[int, dict] = {}
+    if not packets:
+        return []
+
+    time_buckets: dict[int, dict[str, int]] = {}
     for pkt in packets:
-        if pkt.timestamp:
-            bucket = int(pkt.timestamp.timestamp() // interval) * interval
-            if bucket not in time_buckets:
-                time_buckets[bucket] = {"packets": 0, "bytes": 0}
-            time_buckets[bucket]["packets"] += 1
-            time_buckets[bucket]["bytes"] += pkt.length or 0
+        if not pkt.timestamp:
+            continue
+
+        bucket = int(pkt.timestamp.timestamp() // interval) * interval
+        if bucket not in time_buckets:
+            time_buckets[bucket] = {"packets": 0, "bytes": 0}
+        time_buckets[bucket]["packets"] += 1
+        time_buckets[bucket]["bytes"] += pkt.length or 0
 
     return [
         TimeSeriesPoint(
@@ -156,114 +164,134 @@ async def get_top_talkers(
     direction: str = Query(default="both", description="source, dest, both"),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取Top通信者"""
-    talkers: dict[str, dict] = {}
-
-    if direction in ("source", "both"):
-        result = await db.execute(
-            select(
-                Packet.src_ip,
-                func.count(Packet.id).label("count"),
-                func.sum(Packet.length).label("bytes"),
-            )
-            .where(and_(Packet.pcap_id == pcap_id, Packet.src_ip.isnot(None)))
-            .group_by(Packet.src_ip)
-        )
-        for row in result.all():
-            if row.src_ip:
-                if row.src_ip not in talkers:
-                    talkers[row.src_ip] = {"packets": 0, "bytes": 0, "connections": 0}
-                talkers[row.src_ip]["packets"] += row.count
-                talkers[row.src_ip]["bytes"] += row.bytes or 0
-
-    if direction in ("dest", "both"):
-        result = await db.execute(
-            select(
-                Packet.dst_ip,
-                func.count(Packet.id).label("count"),
-                func.sum(Packet.length).label("bytes"),
-            )
-            .where(and_(Packet.pcap_id == pcap_id, Packet.dst_ip.isnot(None)))
-            .group_by(Packet.dst_ip)
-        )
-        for row in result.all():
-            if row.dst_ip:
-                if row.dst_ip not in talkers:
-                    talkers[row.dst_ip] = {"packets": 0, "bytes": 0, "connections": 0}
-                talkers[row.dst_ip]["packets"] += row.count
-                talkers[row.dst_ip]["bytes"] += row.bytes or 0
-
+    """获取 Top 通信者"""
     result = await db.execute(
-        select(Connection.src_ip, func.count(Connection.id).label("conn_count"))
-        .where(Connection.pcap_id == pcap_id)
-        .group_by(Connection.src_ip)
+        select(Connection).where(Connection.pcap_file_id == pcap_id)
     )
-    for row in result.all():
-        if row.src_ip in talkers:
-            talkers[row.src_ip]["connections"] = row.conn_count
+    connections = result.scalars().all()
 
-    sorted_talkers = sorted(talkers.items(), key=lambda x: x[1]["bytes"], reverse=True)[:limit]
+    talkers: dict[str, dict[str, int]] = {}
+
+    def ensure_talker(ip: str) -> dict[str, int]:
+        if ip not in talkers:
+            talkers[ip] = {
+                "packets_sent": 0,
+                "packets_received": 0,
+                "bytes_sent": 0,
+                "bytes_received": 0,
+                "connections": 0,
+            }
+        return talkers[ip]
+
+    for conn in connections:
+        if direction in ("source", "both"):
+            source = ensure_talker(conn.src_ip)
+            source["packets_sent"] += conn.src_to_dst_packets
+            source["bytes_sent"] += conn.src_to_dst_bytes
+            source["connections"] += 1
+
+        if direction in ("dest", "both"):
+            dest = ensure_talker(conn.dst_ip)
+            dest["packets_received"] += conn.src_to_dst_packets
+            dest["bytes_received"] += conn.src_to_dst_bytes
+            dest["connections"] += 1
+
+        if direction == "both":
+            source = ensure_talker(conn.src_ip)
+            source["packets_received"] += conn.dst_to_src_packets
+            source["bytes_received"] += conn.dst_to_src_bytes
+
+            dest = ensure_talker(conn.dst_ip)
+            dest["packets_sent"] += conn.dst_to_src_packets
+            dest["bytes_sent"] += conn.dst_to_src_bytes
+
+    sorted_talkers = sorted(
+        talkers.items(),
+        key=lambda item: item[1]["bytes_sent"] + item[1]["bytes_received"],
+        reverse=True,
+    )[:limit]
 
     return [
-        TopTalker(
-            ip=ip,
-            packets=data["packets"],
-            bytes=data["bytes"],
-            connections=data["connections"],
-        )
-        for ip, data in sorted_talkers
+        TopTalker(ip=ip, **metrics)
+        for ip, metrics in sorted_talkers
     ]
 
 
 @router.get("/dns-analysis/{pcap_id}")
 async def get_dns_analysis(pcap_id: int, db: AsyncSession = Depends(get_db)):
-    """获取DNS分析"""
+    """获取 DNS 分析"""
     result = await db.execute(
         select(DnsRecord.query_type, func.count(DnsRecord.id).label("count"))
-        .where(DnsRecord.pcap_id == pcap_id)
+        .where(DnsRecord.pcap_file_id == pcap_id)
         .group_by(DnsRecord.query_type)
     )
     query_types = {row.query_type: row.count for row in result.all()}
 
     result = await db.execute(
-        select(DnsRecord.query_name, func.count(DnsRecord.id).label("count"))
-        .where(DnsRecord.pcap_id == pcap_id)
-        .group_by(DnsRecord.query_name)
+        select(DnsRecord.domain, func.count(DnsRecord.id).label("count"))
+        .where(and_(DnsRecord.pcap_file_id == pcap_id, DnsRecord.domain != ""))
+        .group_by(DnsRecord.domain)
         .order_by(func.count(DnsRecord.id).desc())
         .limit(20)
     )
-    top_domains = [{"domain": row.query_name, "count": row.count} for row in result.all()]
+    top_domains = [{"domain": row.domain, "count": row.count} for row in result.all()]
 
     result = await db.execute(
         select(DnsRecord.response_code, func.count(DnsRecord.id).label("count"))
-        .where(and_(DnsRecord.pcap_id == pcap_id, DnsRecord.response_code.isnot(None)))
+        .where(
+            and_(
+                DnsRecord.pcap_file_id == pcap_id,
+                DnsRecord.response_code.is_not(None),
+            )
+        )
         .group_by(DnsRecord.response_code)
     )
-    response_codes = {row.response_code: row.count for row in result.all()}
+    response_codes = {str(row.response_code): row.count for row in result.all()}
 
-    return {"query_types": query_types, "top_domains": top_domains, "response_codes": response_codes}
+    return {
+        "query_types": query_types,
+        "top_domains": top_domains,
+        "response_codes": response_codes,
+    }
 
 
 @router.get("/http-analysis/{pcap_id}")
 async def get_http_analysis(pcap_id: int, db: AsyncSession = Depends(get_db)):
-    """获取HTTP分析"""
+    """获取 HTTP 分析"""
     result = await db.execute(
         select(HttpTransaction.method, func.count(HttpTransaction.id).label("count"))
-        .where(HttpTransaction.pcap_id == pcap_id)
+        .where(
+            and_(
+                HttpTransaction.pcap_file_id == pcap_id,
+                HttpTransaction.method != "",
+                HttpTransaction.method != "RESPONSE",
+            )
+        )
         .group_by(HttpTransaction.method)
     )
     methods = {row.method: row.count for row in result.all()}
 
     result = await db.execute(
         select(HttpTransaction.status_code, func.count(HttpTransaction.id).label("count"))
-        .where(and_(HttpTransaction.pcap_id == pcap_id, HttpTransaction.status_code.isnot(None)))
+        .where(
+            and_(
+                HttpTransaction.pcap_file_id == pcap_id,
+                HttpTransaction.status_code.is_not(None),
+            )
+        )
         .group_by(HttpTransaction.status_code)
     )
     status_codes = {str(row.status_code): row.count for row in result.all()}
 
     result = await db.execute(
         select(HttpTransaction.host, func.count(HttpTransaction.id).label("count"))
-        .where(and_(HttpTransaction.pcap_id == pcap_id, HttpTransaction.host.isnot(None)))
+        .where(
+            and_(
+                HttpTransaction.pcap_file_id == pcap_id,
+                HttpTransaction.host.is_not(None),
+                HttpTransaction.host != "",
+            )
+        )
         .group_by(HttpTransaction.host)
         .order_by(func.count(HttpTransaction.id).desc())
         .limit(20)
@@ -272,85 +300,167 @@ async def get_http_analysis(pcap_id: int, db: AsyncSession = Depends(get_db)):
 
     result = await db.execute(
         select(HttpTransaction.user_agent, func.count(HttpTransaction.id).label("count"))
-        .where(and_(HttpTransaction.pcap_id == pcap_id, HttpTransaction.user_agent.isnot(None)))
+        .where(
+            and_(
+                HttpTransaction.pcap_file_id == pcap_id,
+                HttpTransaction.user_agent.is_not(None),
+                HttpTransaction.user_agent != "",
+            )
+        )
         .group_by(HttpTransaction.user_agent)
         .order_by(func.count(HttpTransaction.id).desc())
         .limit(10)
     )
     top_user_agents = [{"user_agent": row.user_agent, "count": row.count} for row in result.all()]
 
-    return {"methods": methods, "status_codes": status_codes, "top_hosts": top_hosts, "top_user_agents": top_user_agents}
-
-
-# ==================== 异常检测接口 ====================
+    return {
+        "methods": methods,
+        "status_codes": status_codes,
+        "top_hosts": top_hosts,
+        "top_user_agents": top_user_agents,
+    }
 
 
 @router.post("/detect-anomalies/{pcap_id}", response_model=list[AnomalyResult])
 async def detect_anomalies(pcap_id: int, db: AsyncSession = Depends(get_db)):
-    """运行异常检测"""
-    anomalies: list[AnomalyResult] = []
+    """运行异常检测并持久化告警"""
+    pcap_file = await db.get(PcapFile, pcap_id)
+    if not pcap_file:
+        raise HTTPException(status_code=404, detail="PCAP 文件不存在")
 
-    # 端口扫描检测
+    anomalies: list[AnomalyResult] = []
+    generated_alerts: list[Alert] = []
+    now = datetime.utcnow()
+    now_iso = now.replace(tzinfo=timezone.utc).isoformat()
+
+    await db.execute(
+        delete(Alert).where(
+            and_(
+                Alert.pcap_file_id == pcap_id,
+                Alert.alert_type.in_(
+                    [
+                        AlertType.PORT_SCAN.value,
+                        AlertType.DNS_ANOMALY.value,
+                        AlertType.DATA_EXFIL.value,
+                    ]
+                ),
+            )
+        )
+    )
+
     result = await db.execute(
-        select(Connection.src_ip, func.count(func.distinct(Connection.dst_port)).label("port_count"))
-        .where(Connection.pcap_id == pcap_id)
+        select(
+            Connection.src_ip,
+            func.count(func.distinct(Connection.dst_port)).label("port_count"),
+        )
+        .where(Connection.pcap_file_id == pcap_id)
         .group_by(Connection.src_ip)
         .having(func.count(func.distinct(Connection.dst_port)) > 50)
     )
     for row in result.all():
+        details = {"source_ip": row.src_ip, "unique_ports": row.port_count}
         anomalies.append(
             AnomalyResult(
-                type="port_scan",
+                type=AlertType.PORT_SCAN.value,
                 severity="high",
                 description="检测到可能的端口扫描行为",
-                details={"source_ip": row.src_ip, "unique_ports": row.port_count},
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                details=details,
+                timestamp=now_iso,
+            )
+        )
+        generated_alerts.append(
+            Alert(
+                pcap_file_id=pcap_id,
+                alert_type=AlertType.PORT_SCAN.value,
+                severity="high",
+                title="疑似端口扫描",
+                description="同一源地址短时间内访问了大量不同目标端口。",
+                src_ip=row.src_ip,
+                evidence=str(details),
+                detected_at=now,
+                recommendation="检查该主机是否在进行横向探测或资产扫描。",
+                confidence=0.85,
             )
         )
 
-    # DNS隧道检测
     result = await db.execute(
-        select(DnsRecord.query_name, func.count(DnsRecord.id).label("count"))
-        .where(DnsRecord.pcap_id == pcap_id)
-        .group_by(DnsRecord.query_name)
-        .having(func.length(DnsRecord.query_name) > 50)
+        select(DnsRecord.domain, func.count(DnsRecord.id).label("count"))
+        .where(and_(DnsRecord.pcap_file_id == pcap_id, func.length(DnsRecord.domain) > 50))
+        .group_by(DnsRecord.domain)
     )
     for row in result.all():
+        details = {"domain": row.domain, "count": row.count}
         anomalies.append(
             AnomalyResult(
-                type="dns_tunnel",
+                type=AlertType.DNS_ANOMALY.value,
                 severity="medium",
-                description="检测到可疑的长DNS域名，可能是DNS隧道",
-                details={"domain": row.query_name, "length": len(row.query_name)},
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                description="检测到可疑的长 DNS 域名，可能存在 DNS 隧道行为",
+                details=details,
+                timestamp=now_iso,
+            )
+        )
+        generated_alerts.append(
+            Alert(
+                pcap_file_id=pcap_id,
+                alert_type=AlertType.DNS_ANOMALY.value,
+                severity="medium",
+                title="疑似 DNS 隧道",
+                description="发现异常偏长的 DNS 查询域名。",
+                evidence=str(details),
+                detected_at=now,
+                recommendation="核查相关域名和主机是否存在数据外传行为。",
+                confidence=0.65,
             )
         )
 
-    # 大流量连接检测
     result = await db.execute(
         select(Connection)
-        .where(and_(Connection.pcap_id == pcap_id, Connection.bytes_sent > 100 * 1024 * 1024))
+        .where(
+            and_(
+                Connection.pcap_file_id == pcap_id,
+                Connection.byte_count > 100 * 1024 * 1024,
+            )
+        )
         .limit(10)
     )
     for conn in result.scalars().all():
+        details = {
+            "source": f"{conn.src_ip}:{conn.src_port}",
+            "dest": f"{conn.dst_ip}:{conn.dst_port}",
+            "bytes": conn.byte_count,
+        }
         anomalies.append(
             AnomalyResult(
-                type="large_transfer",
+                type=AlertType.DATA_EXFIL.value,
                 severity="low",
                 description="检测到大数据量传输",
-                details={
-                    "source": f"{conn.src_ip}:{conn.src_port}",
-                    "dest": f"{conn.dst_ip}:{conn.dst_port}",
-                    "bytes": conn.bytes_sent,
-                },
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                details=details,
+                timestamp=now_iso,
+            )
+        )
+        generated_alerts.append(
+            Alert(
+                pcap_file_id=pcap_id,
+                alert_type=AlertType.DATA_EXFIL.value,
+                severity="low",
+                title="大流量传输",
+                description="检测到高字节数连接，建议确认是否为预期业务流量。",
+                src_ip=conn.src_ip,
+                dst_ip=conn.dst_ip,
+                src_port=conn.src_port,
+                dst_port=conn.dst_port,
+                evidence=str(details),
+                detected_at=now,
+                recommendation="结合业务上下文确认是否存在大文件外传。",
+                confidence=0.5,
             )
         )
 
+    if generated_alerts:
+        db.add_all(generated_alerts)
+
+    await db.commit()
     return anomalies
-
-
-# ==================== 告警接口 ====================
 
 
 @router.get("/alerts", response_model=list[AlertResponse])
@@ -365,29 +475,12 @@ async def list_alerts(
     query = select(Alert).order_by(Alert.detected_at.desc())
 
     if pcap_id:
-        query = query.where(Alert.pcap_id == pcap_id)
+        query = query.where(Alert.pcap_file_id == pcap_id)
     if severity:
         query = query.where(Alert.severity == severity)
 
-    query = query.offset(offset).limit(limit)
-    result = await db.execute(query)
-
-    return [
-        AlertResponse(
-            id=alert.id,
-            pcap_id=alert.pcap_id,
-            type=alert.type,
-            severity=alert.severity,
-            title=alert.title,
-            description=alert.description or "",
-            source_ip=alert.source_ip,
-            dest_ip=alert.dest_ip,
-            mitre_tactic=alert.mitre_tactic,
-            mitre_technique=alert.mitre_technique,
-            created_at=alert.detected_at.isoformat() if alert.detected_at else "",
-        )
-        for alert in result.scalars().all()
-    ]
+    result = await db.execute(query.offset(offset).limit(limit))
+    return [_alert_to_response(alert) for alert in result.scalars().all()]
 
 
 @router.delete("/alerts/{alert_id}")

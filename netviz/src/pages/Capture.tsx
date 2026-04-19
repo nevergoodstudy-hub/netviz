@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Play, Square, Trash2, Download, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
-import { toast } from '@/components/ui/Toaster'
+import { toast } from '@/components/ui/toast-store'
 import { formatBytes, formatNumber } from '@/lib/utils'
 import api from '@/services/api'
 
@@ -85,13 +85,14 @@ export default function Capture() {
     enabled: !!activeSession,
     refetchInterval: activeSession ? 1000 : false,
   })
+  const packetCount = packets?.length ?? 0
 
   // 自动滚动到最新数据包
   useEffect(() => {
-    if (packets && packets.length > 0) {
+    if (packetCount > 0) {
       packetsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [packets?.length])
+  }, [packetCount])
 
   // 开始抓包
   const startMutation = useMutation({
@@ -327,7 +328,7 @@ export default function Capture() {
               )}
             </h2>
             <span className="text-sm text-muted-foreground">
-              {formatNumber(packets?.length || 0)} / {formatNumber(activeSessionData?.packet_count || 0)}
+              {formatNumber(packetCount)} / {formatNumber(activeSessionData?.packet_count || 0)}
             </span>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">

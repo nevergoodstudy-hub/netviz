@@ -4,6 +4,9 @@ NetViz API 端点测试
 
 import pytest
 
+from app.core.config import settings
+import app.api.pcap as pcap_api_module
+
 
 class TestHealthEndpoints:
     """健康检查端点测试"""
@@ -47,6 +50,30 @@ class TestPcapEndpoints:
         response = await client.post("/api/pcap/upload", files=files)
         # 应该返回 400 或验证错误
         assert response.status_code in [400, 422]
+
+    @pytest.mark.asyncio
+    async def test_upload_accepts_nanosecond_pcap_and_cap_extension(
+        self, client, monkeypatch, tmp_path
+    ):
+        """测试纳秒级 PCAP 和 .cap 扩展名可被接受"""
+
+        async def noop_parse_task(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
+        monkeypatch.setattr(pcap_api_module, "parse_pcap_task", noop_parse_task)
+
+        files = {
+            "file": (
+                "capture.cap",
+                b"\x4d\x3c\xb2\xa1" + (b"\x00" * 64),
+                "application/octet-stream",
+            )
+        }
+        response = await client.post("/api/pcap/upload", files=files)
+
+        assert response.status_code == 200
+        assert response.json()["original_filename"] == "capture.cap"
 
 
 class TestCaptureEndpoints:

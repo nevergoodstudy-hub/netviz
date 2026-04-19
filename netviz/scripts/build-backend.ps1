@@ -5,40 +5,26 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $BackendDir = Join-Path $ProjectRoot "backend"
-$OutputDir = Join-Path $ProjectRoot "src-tauri" "binaries"
+$BuildScript = Join-Path $ProjectRoot "scripts" "build_backend_sidecar.py"
+$TargetTriple = if ($env:NETVIZ_TARGET_TRIPLE) { $env:NETVIZ_TARGET_TRIPLE } else { "x86_64-pc-windows-msvc" }
 
 Write-Host "=== NetViz Backend Build Script ===" -ForegroundColor Cyan
 Write-Host "Backend Dir: $BackendDir"
-Write-Host "Output Dir: $OutputDir"
-
-# 确保输出目录存在
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+Write-Host "Target Triple: $TargetTriple"
 
 # 切换到后端目录
 Push-Location $BackendDir
 
 try {
-    # 激活虚拟环境并运行 PyInstaller
-    Write-Host "`nBuilding backend with PyInstaller..." -ForegroundColor Yellow
-    
-    & ".\.venv\Scripts\pyinstaller.exe" `
-        --clean `
-        --noconfirm `
-        "netviz-backend.spec"
+    Write-Host "`nBuilding backend sidecar..." -ForegroundColor Yellow
+
+    & ".\.venv\Scripts\python.exe" `
+        $BuildScript `
+        --target `
+        $TargetTriple
 
     if ($LASTEXITCODE -ne 0) {
-        throw "PyInstaller build failed"
-    }
-
-    # 复制输出文件到 Tauri binaries 目录
-    $ExePath = Join-Path $BackendDir "dist" "netviz-backend-x86_64-pc-windows-msvc.exe"
-    
-    if (Test-Path $ExePath) {
-        Write-Host "`nCopying binary to Tauri binaries directory..." -ForegroundColor Yellow
-        Copy-Item $ExePath -Destination $OutputDir -Force
-        Write-Host "Binary copied to: $OutputDir" -ForegroundColor Green
-    } else {
-        throw "Build output not found: $ExePath"
+        throw "Backend sidecar build failed"
     }
 
     Write-Host "`n=== Build completed successfully! ===" -ForegroundColor Green

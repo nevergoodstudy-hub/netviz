@@ -165,6 +165,14 @@ export interface Alert {
   resolution_notes: string | null
 }
 
+export interface AnomalyResult {
+  type: string
+  severity: AlertSeverity
+  description: string
+  details: Record<string, unknown>
+  timestamp: string
+}
+
 /** DNS 记录 */
 export interface DnsRecord {
   id: number
@@ -234,12 +242,28 @@ export interface ChatMessage {
 
 /** AI 对话 */
 export interface Conversation {
-  id: number
-  pcap_id: number | null
-  title: string
+  conversation: {
+    id: number
+    title: string
+    provider: AIProvider
+    model: string
+  }
   messages: ChatMessage[]
+}
+
+export interface ConversationSummary {
+  id: number
+  title: string
+  provider: AIProvider
+  model: string
+  pcap_file_id: number | null
+  message_count: number
   created_at: string
   updated_at: string
+}
+
+export interface ConversationListResponse {
+  items: ConversationSummary[]
 }
 
 /** AI 聊天请求 */
@@ -253,9 +277,17 @@ export interface ChatRequest {
 /** AI 聊天响应 */
 export interface ChatResponse {
   message: string
-  response?: string  // 别名
   conversation_id: number
-  tokens_used: number
+  provider: AIProvider
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+}
+
+export interface AIProviderTestResult {
+  status: 'success' | 'error'
+  message: string
+  available_models?: string[]
 }
 
 /** AI 分析类型 */
@@ -288,8 +320,8 @@ export interface SystemInfo {
   app_name?: string
   python_version: string
   platform: string
-  pcap_count: number
-  storage_used: number
+  pcap_count?: number
+  storage_used?: number
   debug_mode?: boolean
 }
 
@@ -313,6 +345,23 @@ export interface CaptureStatus {
   byte_count: number
   start_time: string | null
   duration_seconds: number
+}
+
+export interface CaptureCapability {
+  available: boolean
+  interface_count: number
+  message: string
+  npcap_download: string
+}
+
+export interface CaptureSession {
+  id: string
+  interface: string
+  filter: string | null
+  start_time: string
+  packet_count: number
+  byte_count: number
+  is_running: boolean
 }
 
 /** 捕获配置 */

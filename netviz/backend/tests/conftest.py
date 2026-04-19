@@ -17,6 +17,8 @@ from sqlalchemy.orm import sessionmaker
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.database import Base, get_db
+from app.core.config import settings
+import app.core.secret_store as secret_store_module
 from app.main import app
 
 
@@ -66,6 +68,20 @@ async def client(test_db):
         yield ac
     
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_settings_encryption(monkeypatch, tmp_path):
+    """为每个测试隔离设置加密密钥文件，避免污染工作区。"""
+    monkeypatch.setattr(settings, "settings_encryption_key", None)
+    monkeypatch.setattr(
+        settings,
+        "settings_encryption_key_file",
+        tmp_path / "settings-encryption.key",
+    )
+    secret_store_module._generated_install_key.cache_clear()
+    yield
+    secret_store_module._generated_install_key.cache_clear()
 
 
 @pytest.fixture

@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react'
+import type { DragEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { FileUp, FileSearch, Trash2, Upload, Loader2 } from 'lucide-react'
 import { pcapApi } from '@/services/api'
 import { formatBytes, formatNumber } from '@/lib/utils'
-import { toast } from '@/components/ui/Toaster'
+import { toast } from '@/components/ui/toast-store'
 
 export default function PcapList() {
   const queryClient = useQueryClient()
@@ -31,8 +32,13 @@ export default function PcapList() {
     if (!files || files.length === 0) return
 
     const file = files[0]
-    if (!file.name.endsWith('.pcap') && !file.name.endsWith('.pcapng')) {
-      toast({ title: '请上传 .pcap 或 .pcapng 文件', type: 'error' })
+    const normalizedName = file.name.toLowerCase()
+    if (
+      !normalizedName.endsWith('.pcap') &&
+      !normalizedName.endsWith('.pcapng') &&
+      !normalizedName.endsWith('.cap')
+    ) {
+      toast({ title: '请上传 .pcap、.pcapng 或 .cap 文件', type: 'error' })
       return
     }
 
@@ -52,7 +58,7 @@ export default function PcapList() {
   }, [queryClient])
 
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    (e: DragEvent) => {
       e.preventDefault()
       handleUpload(e.dataTransfer.files)
     },
@@ -84,10 +90,10 @@ export default function PcapList() {
           <label className="cursor-pointer space-y-4 block">
             <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
             <div className="text-lg font-medium">拖拽文件到此处或点击上传</div>
-            <div className="text-sm text-muted-foreground">支持 .pcap 和 .pcapng 格式</div>
+            <div className="text-sm text-muted-foreground">支持 .pcap、.pcapng 和 .cap 格式</div>
             <input
               type="file"
-              accept=".pcap,.pcapng"
+              accept=".pcap,.pcapng,.cap"
               className="hidden"
               onChange={(e) => handleUpload(e.target.files)}
             />
@@ -114,7 +120,7 @@ export default function PcapList() {
                 <Link to={`/pcap/${pcap.id}`} className="flex items-center gap-4 flex-1">
                   <FileSearch className="h-8 w-8 text-primary" />
                   <div>
-                    <div className="font-medium">{pcap.filename}</div>
+                    <div className="font-medium">{pcap.original_filename}</div>
                     <div className="text-sm text-muted-foreground">
                       {formatBytes(pcap.file_size)} · {formatNumber(pcap.total_packets)} 个数据包
                     </div>

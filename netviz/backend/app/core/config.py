@@ -10,6 +10,8 @@ from typing import Literal
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_SECRET_KEY = "netviz-secret-key-change-in-production"
+
 
 class Settings(BaseSettings):
     """应用配置类"""
@@ -68,8 +70,20 @@ class Settings(BaseSettings):
 
     # 安全配置
     secret_key: str = Field(
-        default="netviz-secret-key-change-in-production",
+        default=DEFAULT_SECRET_KEY,
         description="JWT密钥，生产环境必须通过环境变量设置"
+    )
+    settings_encryption_key: str | None = Field(
+        default=None,
+        description="Dedicated key for encrypting sensitive settings at rest",
+    )
+    settings_encryption_key_file: Path = Field(
+        default=Path("./data/settings-encryption.key"),
+        description="Per-install key file used when no dedicated env key is supplied",
+    )
+    admin_access_token: str | None = Field(
+        default=None,
+        description="Optional token that authorizes remote access to admin settings routes",
     )
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24小时
@@ -82,7 +96,7 @@ class Settings(BaseSettings):
         environment = info.data.get('environment', 'development')
 
         # 在生产环境中，不允许使用默认密钥
-        if environment == 'production' and v == "netviz-secret-key-change-in-production":
+        if environment == 'production' and v == DEFAULT_SECRET_KEY:
             print("ERROR: Cannot use default SECRET_KEY in production!")
             print("Please set SECRET_KEY environment variable with a strong random key.")
             print("Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'")
@@ -95,6 +109,23 @@ class Settings(BaseSettings):
                 sys.exit(1)
 
         return v
+
+    @field_validator('settings_encryption_key')
+    @classmethod
+    def validate_settings_encryption_key(cls, v: str | None) -> str | None:
+        """验证设置加密密钥强度"""
+        if v is None:
+            return v
+
+        normalized = v.strip()
+        if len(normalized) < 32:
+            print(
+                f"ERROR: SETTINGS_ENCRYPTION_KEY is too short ({len(normalized)} chars). "
+                "Recommended: 32+ characters."
+            )
+            sys.exit(1)
+
+        return normalized
 
     # CORS 配置
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -116,6 +147,7 @@ class Settings(BaseSettings):
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.geoip_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.settings_encryption_key_file.parent.mkdir(parents=True, exist_ok=True)
 
     def get_ai_config(self, provider: str | None = None) -> dict:
         """获取指定 AI 提供商的配置"""

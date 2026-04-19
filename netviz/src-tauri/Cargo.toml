@@ -5,18 +5,18 @@ description = "NetViz - PCAP 可视化分析平台"
 authors = ["NetViz Team"]
 edition = "2021"
 license = "MIT"
-repository = ""
+repository = "https://github.com/nevergoodstudy-hub/netviz"
 
 [lib]
 name = "netviz_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
+tauri = { version = "2.10.3", features = ["tray-icon"] }
+tauri-plugin-shell = "2.3.5"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

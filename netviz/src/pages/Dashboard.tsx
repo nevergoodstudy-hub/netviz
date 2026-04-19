@@ -1,3 +1,4 @@
+import type { ElementType } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { FileUp, FileSearch, AlertTriangle, Activity } from 'lucide-react'
@@ -77,8 +78,8 @@ export default function Dashboard() {
               >
                 <div className="flex items-center gap-3">
                   <FileSearch className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">{pcap.filename}</div>
+                    <div>
+                    <div className="font-medium">{pcap.original_filename}</div>
                     <div className="text-sm text-muted-foreground">
                       {formatBytes(pcap.file_size)} · {formatNumber(pcap.total_packets)} 个数据包
                     </div>
@@ -137,7 +138,7 @@ function StatCard({
   value,
   color,
 }: {
-  icon: React.ElementType
+  icon: ElementType
   label: string
   value: string
   color: string

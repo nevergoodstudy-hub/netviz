@@ -5,6 +5,7 @@ NetViz AI 服务模块
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -202,7 +203,22 @@ class OllamaService(AIService):
                 raise Exception("无法连接到 Ollama 服务，请确保 Ollama 正在运行")
 
 
-def get_ai_service(provider: str) -> AIService:
+def _setting_value(
+    overrides: Mapping[str, str | None] | None,
+    key: str,
+    fallback: str | None,
+) -> str | None:
+    if overrides is None:
+        return fallback
+
+    value = overrides.get(key)
+    return fallback if value in (None, "") else value
+
+
+def get_ai_service(
+    provider: str,
+    overrides: Mapping[str, str | None] | None = None,
+) -> AIService:
     """
     获取 AI 服务实例
 
@@ -216,35 +232,48 @@ def get_ai_service(provider: str) -> AIService:
         ValueError: 如果提供商无效或未配置
     """
     if provider == "openai":
-        if not settings.openai_api_key:
+        api_key = _setting_value(overrides, "openai_api_key", settings.openai_api_key)
+        if not api_key:
             raise ValueError("未配置 OpenAI API Key")
         return OpenAIService(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            base_url=settings.openai_base_url,
+            api_key=api_key,
+            model=_setting_value(overrides, "openai_model", settings.openai_model)
+            or settings.openai_model,
+            base_url=_setting_value(overrides, "openai_base_url", settings.openai_base_url),
         )
 
     elif provider == "anthropic":
-        if not settings.anthropic_api_key:
+        api_key = _setting_value(
+            overrides,
+            "anthropic_api_key",
+            settings.anthropic_api_key,
+        )
+        if not api_key:
             raise ValueError("未配置 Anthropic API Key")
         return AnthropicService(
-            api_key=settings.anthropic_api_key,
-            model=settings.anthropic_model,
+            api_key=api_key,
+            model=_setting_value(overrides, "anthropic_model", settings.anthropic_model)
+            or settings.anthropic_model,
         )
 
     elif provider == "ollama":
         return OllamaService(
-            base_url=settings.ollama_base_url,
-            model=settings.ollama_model,
+            base_url=_setting_value(overrides, "ollama_base_url", settings.ollama_base_url)
+            or settings.ollama_base_url,
+            model=_setting_value(overrides, "ollama_model", settings.ollama_model)
+            or settings.ollama_model,
         )
 
     elif provider == "deepseek":
-        if not settings.deepseek_api_key:
+        api_key = _setting_value(overrides, "deepseek_api_key", settings.deepseek_api_key)
+        if not api_key:
             raise ValueError("未配置 DeepSeek API Key")
         return DeepSeekService(
-            api_key=settings.deepseek_api_key,
-            model=settings.deepseek_model,
-            base_url=settings.deepseek_base_url,
+            api_key=api_key,
+            model=_setting_value(overrides, "deepseek_model", settings.deepseek_model)
+            or settings.deepseek_model,
+            base_url=_setting_value(overrides, "deepseek_base_url", settings.deepseek_base_url)
+            or settings.deepseek_base_url,
         )
 
     else:

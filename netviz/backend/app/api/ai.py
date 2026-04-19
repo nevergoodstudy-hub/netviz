@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.analysis import AIConversation, AIMessage
+from app.core.secret_store import build_settings_map
+from app.models.analysis import AIConversation, AIMessage, Settings
 from app.models.pcap import Connection, Packet, PcapFile
 from app.services.ai.ai_service import AIService, get_ai_service
 
@@ -30,7 +31,7 @@ class ChatRequest(BaseModel):
     message: str
     pcap_id: int | None = None
     conversation_id: int | None = None
-    provider: Literal["openai", "anthropic", "ollama"] | None = None
+    provider: Literal["openai", "anthropic", "ollama", "deepseek"] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -48,15 +49,16 @@ class SummaryRequest(BaseModel):
     """摘要请求"""
 
     pcap_id: int
-    provider: Literal["openai", "anthropic", "ollama"] | None = None
+    provider: Literal["openai", "anthropic", "ollama", "deepseek"] | None = None
 
 
 class AnalysisRequest(BaseModel):
     """分析请求"""
 
     pcap_id: int
-    query: str
-    provider: Literal["openai", "anthropic", "ollama"] | None = None
+    query: str | None = None
+    analysis_type: str | None = None
+    provider: Literal["openai", "anthropic", "ollama", "deepseek"] | None = None
 
 
 class ConversationResponse(BaseModel):
@@ -77,6 +79,12 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     created_at: str
+
+
+async def get_ai_runtime_settings(db: AsyncSession) -> dict[str, str | None]:
+    """获取 AI 运行时设置（数据库优先，已解密）"""
+    result = await db.execute(select(Settings))
+    return build_settings_map(result.scalars().all())
 
 
 # ============== Helper Functions ==============
@@ -134,20 +142,25 @@ async def get_pcap_context(pcap_id: int, db: AsyncSession) -> str:
 # ============== API Endpoints ==============
 
 @router.get("/providers")
-async def get_available_providers():
+async def get_available_providers(db: AsyncSession = Depends(get_db)):
     """获取可用的 AI 提供商"""
+    db_settings = await get_ai_runtime_settings(db)
+    openai_key = db_settings.get("openai_api_key") or settings.openai_api_key
+    anthropic_key = db_settings.get("anthropic_api_key") or settings.anthropic_api_key
+    deepseek_key = db_settings.get("deepseek_api_key") or settings.deepseek_api_key
+
     return {
         "providers": [
             {
                 "id": "openai",
                 "name": "OpenAI",
-                "available": bool(settings.openai_api_key),
+                "available": bool(openai_key),
                 "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
             },
             {
                 "id": "anthropic",
                 "name": "Anthropic",
-                "available": bool(settings.anthropic_api_key),
+                "available": bool(anthropic_key),
                 "models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"],
             },
             {
@@ -156,8 +169,14 @@ async def get_available_providers():
                 "available": True,
                 "models": ["llama3.2", "mistral", "codellama"],
             },
+            {
+                "id": "deepseek",
+                "name": "DeepSeek",
+                "available": bool(deepseek_key),
+                "models": ["deepseek-chat", "deepseek-reasoner"],
+            },
         ],
-        "default": settings.default_ai_provider,
+        "default": db_settings.get("default_ai_provider") or settings.default_ai_provider,
     }
 
 
@@ -167,13 +186,14 @@ async def chat(
     db: AsyncSession = Depends(get_db),
 ):
     """与 AI 进行对话"""
-    provider = request.provider or settings.default_ai_provider
+    db_settings = await get_ai_runtime_settings(db)
+    provider = request.provider or db_settings.get("default_ai_provider") or settings.default_ai_provider
 
     if provider == "none":
         raise HTTPException(status_code=400, detail="未配置 AI 提供商，请先在设置中配置 API Key")
 
     try:
-        ai_service = get_ai_service(provider)
+        ai_service = get_ai_service(provider, db_settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -272,13 +292,14 @@ async def generate_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """生成 PCAP 文件分析摘要"""
-    provider = request.provider or settings.default_ai_provider
+    db_settings = await get_ai_runtime_settings(db)
+    provider = request.provider or db_settings.get("default_ai_provider") or settings.default_ai_provider
 
     if provider == "none":
         raise HTTPException(status_code=400, detail="未配置 AI 提供商")
 
     try:
-        ai_service = get_ai_service(provider)
+        ai_service = get_ai_service(provider, db_settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -320,15 +341,20 @@ async def analyze_traffic(
     db: AsyncSession = Depends(get_db),
 ):
     """根据自然语言查询分析流量"""
-    provider = request.provider or settings.default_ai_provider
+    db_settings = await get_ai_runtime_settings(db)
+    provider = request.provider or db_settings.get("default_ai_provider") or settings.default_ai_provider
 
     if provider == "none":
         raise HTTPException(status_code=400, detail="未配置 AI 提供商")
 
     try:
-        ai_service = get_ai_service(provider)
+        ai_service = get_ai_service(provider, db_settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    query = request.query or request.analysis_type
+    if not query:
+        raise HTTPException(status_code=422, detail="query is required")
 
     context = await get_pcap_context(request.pcap_id, db)
 
@@ -338,7 +364,7 @@ async def analyze_traffic(
 {context}
 
 ## 用户问题
-{request.query}
+{query}
 
 请基于上下文信息回答，如果信息不足以回答，请说明需要什么额外信息。"""
 
@@ -401,6 +427,7 @@ async def list_conversations(
 
 
 @router.get("/conversations/{conversation_id}/messages")
+@router.get("/conversations/{conversation_id}")
 async def get_conversation_messages(
     conversation_id: int,
     db: AsyncSession = Depends(get_db),

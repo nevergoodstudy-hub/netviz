@@ -2,11 +2,25 @@
   "name": "netviz",
   "private": true,
   "version": "1.0.0",
+  "description": "NetViz desktop and web packet visualization platform built with React, FastAPI, and Tauri",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nevergoodstudy-hub/netviz.git",
+    "directory": "netviz"
+  },
+  "bugs": {
+    "url": "https://github.com/nevergoodstudy-hub/netviz/issues"
+  },
+  "homepage": "https://github.com/nevergoodstudy-hub/netviz/tree/main/netviz",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "sync:backend-config": "node ./scripts/sync-backend-endpoint.mjs",
+    "dev": "npm run sync:backend-config && vite",
+    "build": "npm run sync:backend-config && tsc && vite build",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
@@ -20,7 +34,7 @@
     "@radix-ui/react-tooltip": "^1.0.7",
     "@tanstack/react-query": "^5.17.0",
     "@tauri-apps/api": "^2.9.1",
-    "axios": "^1.6.7",
+    "axios": "^1.15.0",
     "clsx": "^2.1.0",
     "d3": "^7.8.5",
     "date-fns": "^3.3.1",
@@ -37,21 +51,23 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@tauri-apps/cli": "^2.9.6",
     "@types/d3": "^7.4.3",
     "@types/leaflet": "^1.9.8",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.17",
-    "eslint": "^8.56.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.5",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^16.5.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
-    "vite": "^5.1.1"
+    "vite": "^7.3.2"
   }
 }

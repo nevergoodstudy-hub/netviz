@@ -132,7 +132,7 @@ async def notify_alert(alert: dict[str, Any]):
     )
 
 
-@router.websocket("/ws/{client_id}")
+@router.websocket("/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     """WebSocket 端点"""
     await manager.connect(websocket, client_id)
@@ -183,7 +183,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id)
 
 
-@router.get("/ws/stats")
+@router.get("/stats")
 async def get_websocket_stats():
     """获取 WebSocket 统计信息"""
     return {

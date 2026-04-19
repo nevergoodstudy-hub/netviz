@@ -116,7 +116,7 @@ export default function PcapDetail() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">{pcap.filename}</h1>
+          <h1 className="text-2xl font-bold">{pcap.original_filename}</h1>
           <p className="text-sm text-muted-foreground">
             {formatBytes(pcap.file_size)} · {formatNumber(pcap.total_packets)} 个数据包
           </p>
@@ -224,7 +224,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 function PacketList({ pcapId }: { pcapId: number }) {
-  const { data: packets, isLoading } = useQuery({
+  const { data: packetPage, isLoading } = useQuery({
     queryKey: ['packets', pcapId],
     queryFn: () => pcapApi.getPackets(pcapId, { limit: 100 }).then((r) => r.data),
   })
@@ -232,6 +232,8 @@ function PacketList({ pcapId }: { pcapId: number }) {
   if (isLoading) {
     return <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
   }
+
+  const packets = packetPage?.items ?? []
 
   return (
     <div className="overflow-x-auto">
@@ -264,7 +266,7 @@ function PacketList({ pcapId }: { pcapId: number }) {
 }
 
 function ConnectionList({ pcapId }: { pcapId: number }) {
-  const { data: connections, isLoading } = useQuery({
+  const { data: connectionPage, isLoading } = useQuery({
     queryKey: ['connections', pcapId],
     queryFn: () => pcapApi.getConnections(pcapId).then((r) => r.data),
   })
@@ -272,6 +274,8 @@ function ConnectionList({ pcapId }: { pcapId: number }) {
   if (isLoading) {
     return <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>
   }
+
+  const connections = connectionPage?.items ?? []
 
   return (
     <div className="overflow-x-auto">

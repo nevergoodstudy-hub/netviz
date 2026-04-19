@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { AlertTriangle, Search, Loader2 } from 'lucide-react'
 import { pcapApi, analysisApi } from '@/services/api'
-import { toast } from '@/components/ui/Toaster'
+import { toast } from '@/components/ui/toast-store'
 
 export default function Analysis() {
   const [selectedPcap, setSelectedPcap] = useState<number | null>(null)

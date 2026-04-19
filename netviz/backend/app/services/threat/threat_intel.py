@@ -197,10 +197,10 @@ class ThreatIntelService:
         abuseipdb_key: str | None = None
     ) -> None:
         """配置威胁情报提供商"""
-        if virustotal_key:
-            self._vt_provider = VirusTotalProvider(virustotal_key)
-        if abuseipdb_key:
-            self._abuseipdb_provider = AbuseIPDBProvider(abuseipdb_key)
+        self._vt_provider = VirusTotalProvider(virustotal_key) if virustotal_key else None
+        self._abuseipdb_provider = (
+            AbuseIPDBProvider(abuseipdb_key) if abuseipdb_key else None
+        )
     
     def is_configured(self) -> bool:
         """检查是否有提供商已配置"""

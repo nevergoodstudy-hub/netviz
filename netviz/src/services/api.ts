@@ -10,20 +10,25 @@ import type {
   TopTalker,
   NetworkTopology,
   Alert,
+  AnomalyResult,
   AlertSeverity,
   TimeSeriesPoint,
   DnsAnalysis,
   HttpAnalysis,
   AIProvider,
   AIProviderStatus,
+  AIProviderTestResult,
   ChatRequest,
   ChatResponse,
   Conversation,
+  ConversationListResponse,
   AIProviderConfig,
   SystemInfo,
   NetworkInterface,
-  CaptureStatus,
+  CaptureCapability,
+  CaptureSession,
   CaptureConfig,
+  PaginatedResponse,
   PaginationParams,
 } from '@/types'
 
@@ -52,8 +57,9 @@ export const pcapApi = {
   getPackets: (
     id: number,
     params?: PaginationParams & { protocol?: string }
-  ): Promise<AxiosResponse<Packet[]>> => api.get(`/pcap/${id}/packets`, { params }),
-  getConnections: (id: number): Promise<AxiosResponse<Connection[]>> =>
+  ): Promise<AxiosResponse<PaginatedResponse<Packet>>> =>
+    api.get(`/pcap/${id}/packets`, { params }),
+  getConnections: (id: number): Promise<AxiosResponse<PaginatedResponse<Connection>>> =>
     api.get(`/pcap/${id}/connections`),
   getStats: (id: number): Promise<AxiosResponse<PcapStats>> =>
     api.get(`/pcap/${id}/stats`),
@@ -79,7 +85,7 @@ export const analysisApi = {
     api.get(`/analysis/dns-analysis/${pcapId}`),
   getHttpAnalysis: (pcapId: number): Promise<AxiosResponse<HttpAnalysis>> =>
     api.get(`/analysis/http-analysis/${pcapId}`),
-  detectAnomalies: (pcapId: number): Promise<AxiosResponse<Alert[]>> =>
+  detectAnomalies: (pcapId: number): Promise<AxiosResponse<AnomalyResult[]>> =>
     api.post(`/analysis/detect-anomalies/${pcapId}`),
   getAlerts: (params?: {
     pcap_id?: number
@@ -98,11 +104,11 @@ export const aiApi = {
     api.post('/ai/summary', { pcap_id: pcapId, provider }),
   analyze: (
     pcapId: number,
-    analysisType: string,
+    query: string,
     provider?: AIProvider
-  ): Promise<AxiosResponse<{ analysis: string }>> =>
-    api.post('/ai/analyze', { pcap_id: pcapId, analysis_type: analysisType, provider }),
-  getConversations: (pcapId?: number): Promise<AxiosResponse<Conversation[]>> =>
+  ): Promise<AxiosResponse<{ answer: string; provider: AIProvider; model: string }>> =>
+    api.post('/ai/analyze', { pcap_id: pcapId, query, provider }),
+  getConversations: (pcapId?: number): Promise<AxiosResponse<ConversationListResponse>> =>
     api.get('/ai/conversations', { params: { pcap_id: pcapId } }),
   getConversation: (id: number): Promise<AxiosResponse<Conversation>> =>
     api.get(`/ai/conversations/${id}`),
@@ -119,7 +125,7 @@ export const settingsApi = {
     api.get('/settings/ai-providers'),
   configureAIProvider: (data: AIProviderConfig): Promise<AxiosResponse<{ message: string }>> =>
     api.post('/settings/ai-providers', data),
-  testAIProvider: (provider: AIProvider): Promise<AxiosResponse<{ success: boolean }>> =>
+  testAIProvider: (provider: AIProvider): Promise<AxiosResponse<AIProviderTestResult>> =>
     api.post(`/settings/ai-providers/${provider}/test`),
   getSystemInfo: (): Promise<AxiosResponse<SystemInfo>> => api.get('/settings/system-info'),
 }
@@ -128,10 +134,10 @@ export const settingsApi = {
 export const captureApi = {
   getInterfaces: (): Promise<AxiosResponse<NetworkInterface[]>> =>
     api.get('/capture/interfaces'),
-  getStatus: (): Promise<AxiosResponse<CaptureStatus>> => api.get('/capture/status'),
-  start: (config: CaptureConfig): Promise<AxiosResponse<{ session_id: string }>> =>
+  getStatus: (): Promise<AxiosResponse<CaptureCapability>> => api.get('/capture/check'),
+  start: (config: CaptureConfig): Promise<AxiosResponse<CaptureSession>> =>
     api.post('/capture/start', config),
-  stop: (sessionId: string): Promise<AxiosResponse<{ pcap_id: number }>> =>
+  stop: (sessionId: string): Promise<AxiosResponse<CaptureSession>> =>
     api.post(`/capture/stop/${sessionId}`),
 }
 

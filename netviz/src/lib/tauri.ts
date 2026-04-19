@@ -4,6 +4,8 @@
  */
 
 // 检测是否在 Tauri 环境中运行
+import { desktopBackendApiBaseUrl, desktopBackendOrigin, desktopBackendWsUrl } from './backendConfig'
+
 export const isTauri = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI__' in window
 }
@@ -12,7 +14,7 @@ export const isTauri = (): boolean => {
 export const getApiBaseUrl = (): string => {
   if (isTauri()) {
     // Tauri 环境：使用本地后端
-    return 'http://127.0.0.1:8000/api'
+    return desktopBackendApiBaseUrl
   }
   // Web 环境：使用相对路径（通过 Vite proxy）
   return '/api'
@@ -21,7 +23,7 @@ export const getApiBaseUrl = (): string => {
 // 获取 WebSocket URL
 export const getWsUrl = (): string => {
   if (isTauri()) {
-    return 'ws://127.0.0.1:8000/ws'
+    return desktopBackendWsUrl
   }
   // Web 环境
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -43,17 +45,23 @@ export const invokeTauri = async <T>(cmd: string, args?: Record<string, unknown>
 
 // 启动后端服务
 export const startBackend = async (): Promise<string | null> => {
-  return invokeTauri<string>('start_backend')
+  if (!isTauri()) return null
+
+  const ready = await waitForBackend()
+  return ready ? desktopBackendOrigin : null
 }
 
 // 停止后端服务
 export const stopBackend = async (): Promise<string | null> => {
-  return invokeTauri<string>('stop_backend')
+  if (!isTauri()) return null
+
+  console.warn('NetViz desktop backend is managed by the Tauri lifecycle and cannot be stopped independently.')
+  return null
 }
 
 // 检查后端状态
 export const checkBackendStatus = async (): Promise<boolean> => {
-  const result = await invokeTauri<boolean>('check_backend_status')
+  const result = await invokeTauri<boolean>('check_backend_health')
   return result ?? false
 }
 

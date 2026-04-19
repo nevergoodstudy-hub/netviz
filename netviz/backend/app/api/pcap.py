@@ -3,6 +3,7 @@ NetViz PCAP 文件操作 API
 """
 
 import hashlib
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,14 @@ from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, Pars
 from app.services.parser.pcap_parser import parse_pcap_async
 
 router = APIRouter()
+
+PCAP_MAGIC_HEADERS = {
+    b"\xd4\xc3\xb2\xa1",  # Little-endian microsecond PCAP
+    b"\xa1\xb2\xc3\xd4",  # Big-endian microsecond PCAP
+    b"\x4d\x3c\xb2\xa1",  # Little-endian nanosecond PCAP
+    b"\xa1\xb2\x3c\x4d",  # Big-endian nanosecond PCAP
+    b"\x0a\x0d\x0d\x0a",  # PCAPNG
+}
 
 
 # ============== Schemas ==============
@@ -49,6 +58,15 @@ class PcapListResponse(BaseModel):
 
     items: list[PcapFileResponse]
     total: int
+
+
+class PcapStatsResponse(BaseModel):
+    """PCAP 聚合统计响应"""
+
+    total_packets: int
+    total_bytes: int
+    unique_ips: int
+    total_connections: int
 
 
 class PacketResponse(BaseModel):
@@ -156,12 +174,7 @@ async def upload_pcap(
     magic_bytes = await file.read(4)
     await file.seek(0)  # 重置文件指针
 
-    # PCAP magic numbers
-    PCAP_MAGIC_LE = b'\xd4\xc3\xb2\xa1'  # Little-endian
-    PCAP_MAGIC_BE = b'\xa1\xb2\xc3\xd4'  # Big-endian
-    PCAPNG_MAGIC = b'\x0a\x0d\x0d\x0a'   # PCAPNG
-
-    if magic_bytes not in [PCAP_MAGIC_LE, PCAP_MAGIC_BE, PCAPNG_MAGIC]:
+    if magic_bytes not in PCAP_MAGIC_HEADERS:
         raise HTTPException(
             status_code=400,
             detail="文件内容不是有效的PCAP格式（魔术字节验证失败）"
@@ -243,6 +256,7 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
             pcap_file.duration_seconds = result.duration_seconds
 
             # 批量插入数据包
+            packet_entities: list[Packet] = []
             for pkt_info in result.packets:
                 packet = Packet(
                     pcap_file_id=pcap_id,
@@ -267,8 +281,18 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
                     payload_length=pkt_info.payload_length,
                 )
                 db.add(packet)
+                packet_entities.append(packet)
+
+            await db.flush()
+            packet_id_by_number = {
+                packet.packet_number: packet.id for packet in packet_entities
+            }
+            packet_by_number = {
+                packet.packet_number: packet for packet in packet_entities
+            }
 
             # 批量插入连接
+            connection_entities: list[Connection] = []
             for conn_info in result.connections.values():
                 if conn_info.src_ip:
                     conn = Connection(
@@ -293,6 +317,97 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
                         is_encrypted=conn_info.is_encrypted,
                     )
                     db.add(conn)
+                    connection_entities.append(conn)
+
+            await db.flush()
+            connection_id_by_key = {
+                (
+                    conn.src_ip,
+                    conn.dst_ip,
+                    conn.src_port,
+                    conn.dst_port,
+                    conn.protocol,
+                ): conn.id
+                for conn in connection_entities
+            }
+
+            for dns_record in result.dns_records:
+                packet_id = packet_id_by_number.get(dns_record["packet_number"])
+                if not packet_id:
+                    continue
+
+                db.add(
+                    DnsRecord(
+                        pcap_file_id=pcap_id,
+                        packet_id=packet_id,
+                        query_id=dns_record["query_id"],
+                        is_response=dns_record["is_response"],
+                        domain=dns_record["domain"].rstrip("."),
+                        query_type=dns_record["query_type"] or "UNKNOWN",
+                        response_code=dns_record["response_code"],
+                        answers=(
+                            json.dumps(dns_record["answers"], ensure_ascii=False)
+                            if dns_record["answers"]
+                            else None
+                        ),
+                        timestamp=dns_record["timestamp"],
+                    )
+                )
+
+            for http_data in result.http_transactions:
+                packet = packet_by_number.get(http_data["packet_number"])
+                connection_id = None
+                if packet and packet.src_ip and packet.dst_ip and packet.protocol:
+                    connection_id = connection_id_by_key.get(
+                        (
+                            packet.src_ip,
+                            packet.dst_ip,
+                            packet.src_port,
+                            packet.dst_port,
+                            packet.protocol,
+                        )
+                    )
+
+                if http_data["type"] == "request":
+                    db.add(
+                        HttpTransaction(
+                            pcap_file_id=pcap_id,
+                            connection_id=connection_id,
+                            method=http_data.get("method") or "UNKNOWN",
+                            host=http_data.get("host") or "",
+                            uri=http_data.get("uri") or "/",
+                            user_agent=http_data.get("user_agent"),
+                            content_type=None,
+                            request_headers=None,
+                            status_code=None,
+                            response_content_type=None,
+                            response_headers=None,
+                            request_time=http_data["timestamp"],
+                            response_time=None,
+                            request_size=0,
+                            response_size=0,
+                        )
+                    )
+                else:
+                    db.add(
+                        HttpTransaction(
+                            pcap_file_id=pcap_id,
+                            connection_id=connection_id,
+                            method="RESPONSE",
+                            host="",
+                            uri="/",
+                            user_agent=None,
+                            content_type=None,
+                            request_headers=None,
+                            status_code=http_data.get("status_code"),
+                            response_content_type=http_data.get("content_type"),
+                            response_headers=None,
+                            request_time=http_data["timestamp"],
+                            response_time=http_data["timestamp"],
+                            request_size=0,
+                            response_size=0,
+                        )
+                    )
 
             await db.commit()
 
@@ -330,6 +445,36 @@ async def get_pcap_file(pcap_id: int, db: AsyncSession = Depends(get_db)):
     if not pcap_file:
         raise HTTPException(status_code=404, detail="文件不存在")
     return pcap_file
+
+
+@router.get("/{pcap_id}/stats", response_model=PcapStatsResponse)
+async def get_pcap_stats(pcap_id: int, db: AsyncSession = Depends(get_db)):
+    """获取 PCAP 聚合统计"""
+    pcap_file = await db.get(PcapFile, pcap_id)
+    if not pcap_file:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    packet_rows = await db.execute(
+        select(Packet.src_ip, Packet.dst_ip).where(Packet.pcap_file_id == pcap_id)
+    )
+    unique_ips = {
+        ip
+        for row in packet_rows.all()
+        for ip in (row.src_ip, row.dst_ip)
+        if ip
+    }
+
+    connection_count_result = await db.execute(
+        select(func.count(Connection.id)).where(Connection.pcap_file_id == pcap_id)
+    )
+    total_connections = connection_count_result.scalar() or 0
+
+    return PcapStatsResponse(
+        total_packets=pcap_file.total_packets,
+        total_bytes=pcap_file.total_bytes,
+        unique_ips=len(unique_ips),
+        total_connections=total_connections,
+    )
 
 
 @router.get("/{pcap_id}/progress")

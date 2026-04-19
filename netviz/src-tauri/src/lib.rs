@@ -1,14 +1,61 @@
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
+use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // 全局后端进程状态
 static BACKEND_RUNNING: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Deserialize)]
+struct BackendEndpointFile {
+    desktop: DesktopBackendEndpoint,
+}
+
+#[derive(Clone, Deserialize)]
+struct DesktopBackendEndpoint {
+    protocol: String,
+    host: String,
+    port: u16,
+    #[serde(rename = "apiBasePath")]
+    api_base_path: String,
+}
+
+impl DesktopBackendEndpoint {
+    fn origin(&self) -> String {
+        format!("{}://{}:{}", self.protocol, self.host, self.port)
+    }
+
+    fn api_base_url(&self) -> String {
+        format!("{}{}", self.origin(), normalize_path(&self.api_base_path))
+    }
+
+    fn health_url(&self) -> String {
+        format!("{}/health", self.api_base_url().trim_end_matches('/'))
+    }
+}
+
+fn normalize_path(path: &str) -> String {
+    if path.is_empty() || path == "/" {
+        "/".to_string()
+    } else if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    }
+}
+
+fn backend_endpoint() -> Result<DesktopBackendEndpoint, String> {
+    serde_json::from_str::<BackendEndpointFile>(include_str!("../../config/backend-endpoint.json"))
+        .map(|config| config.desktop)
+        .map_err(|err| format!("Failed to parse backend endpoint config: {}", err))
+}
+
 /// 检查后端健康状态
 #[tauri::command]
 async fn check_backend_health() -> Result<bool, String> {
-    match reqwest::get("http://127.0.0.1:8000/api/health").await {
+    let endpoint = backend_endpoint()?;
+
+    match reqwest::get(endpoint.health_url()).await {
         Ok(response) => Ok(response.status().is_success()),
         Err(_) => Ok(false),
     }
@@ -16,8 +63,8 @@ async fn check_backend_health() -> Result<bool, String> {
 
 /// 获取后端 API 地址
 #[tauri::command]
-fn get_backend_url() -> String {
-    "http://127.0.0.1:8000".to_string()
+fn get_backend_url() -> Result<String, String> {
+    Ok(backend_endpoint()?.origin())
 }
 
 /// 启动后端 sidecar
@@ -28,10 +75,17 @@ async fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
     }
 
     println!("[Tauri] Starting backend sidecar...");
-    
+
+    let endpoint = backend_endpoint()?;
+
     let sidecar = app
         .shell()
         .sidecar("netviz-backend")
+        .map(|command| {
+            command
+                .env("NETVIZ_HOST", endpoint.host.clone())
+                .env("NETVIZ_PORT", endpoint.port.to_string())
+        })
         .map_err(|e| format!("Failed to create sidecar: {}", e))?;
 
     let (mut rx, _child) = sidecar

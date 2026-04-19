@@ -40,6 +40,13 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    from app.core.secret_store import rotate_legacy_encrypted_settings
+
+    async with async_session_maker() as session:
+        rotated = await rotate_legacy_encrypted_settings(session)
+        if rotated:
+            await session.commit()
+
 
 async def close_db() -> None:
     """关闭数据库连接"""

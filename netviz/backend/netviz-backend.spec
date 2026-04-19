@@ -3,10 +3,15 @@
 NetViz 后端 PyInstaller 打包配置
 """
 
+import os
 import sys
 from pathlib import Path
 
 block_cipher = None
+sidecar_name = os.environ.get(
+    "NETVIZ_SIDECAR_NAME",
+    "netviz-backend-x86_64-pc-windows-msvc",
+)
 
 # 项目根目录
 backend_dir = Path(SPECPATH)
@@ -104,7 +109,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='netviz-backend-x86_64-pc-windows-msvc',
+    name=sidecar_name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, X, Loader2, Eye, EyeOff } from 'lucide-react'
 import { settingsApi } from '@/services/api'
-import { toast } from '@/components/ui/Toaster'
+import { toast } from '@/components/ui/toast-store'
 
 export default function Settings() {
   const { data: providers } = useQuery({
@@ -108,10 +108,10 @@ function ProviderConfig({
   const testMutation = useMutation({
     mutationFn: () => settingsApi.testAIProvider(provider as import('@/types').AIProvider),
     onSuccess: (res) => {
-      if (res.data.success) {
-        toast({ title: '连接成功', type: 'success' })
+      if (res.data.status === 'success') {
+        toast({ title: '连接成功', description: res.data.message, type: 'success' })
       } else {
-        toast({ title: '连接失败', type: 'error' })
+        toast({ title: '连接失败', description: res.data.message, type: 'error' })
       }
     },
     onError: () => {

@@ -10,8 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_access import require_admin_access
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.secret_store import build_settings_map, encrypt_setting_value
 from app.models.analysis import Settings as DbSettings
 from app.services.threat.threat_intel import threat_intel_service, ThreatIntelResult
 
@@ -60,7 +62,7 @@ class ThreatIntelStatus(BaseModel):
 async def _configure_threat_intel(db: AsyncSession) -> None:
     """从数据库配置威胁情报服务"""
     result = await db.execute(select(DbSettings))
-    db_settings = {s.key: s.value for s in result.scalars().all()}
+    db_settings = build_settings_map(result.scalars().all())
     
     vt_key = db_settings.get("virustotal_api_key") or settings.virustotal_api_key
     abuseipdb_key = db_settings.get("abuseipdb_api_key") or settings.abuseipdb_api_key
@@ -90,6 +92,7 @@ def _result_to_response(result: ThreatIntelResult) -> ThreatIntelResponse:
 
 @router.get("/status", response_model=ThreatIntelStatus)
 async def get_threat_intel_status(
+    _: None = Depends(require_admin_access),
     db: AsyncSession = Depends(get_db)
 ):
     """获取威胁情报服务状态"""
@@ -110,6 +113,7 @@ async def get_threat_intel_status(
 @router.post("/configure")
 async def configure_threat_intel(
     config: ThreatIntelConfigRequest,
+    _: None = Depends(require_admin_access),
     db: AsyncSession = Depends(get_db)
 ):
     """配置威胁情报 API 密钥"""
@@ -126,11 +130,20 @@ async def configure_threat_intel(
             select(DbSettings).where(DbSettings.key == key)
         )
         setting = result.scalar_one_or_none()
-        
+
+        try:
+            stored_value, is_encrypted = encrypt_setting_value(key, value)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Unable to secure setting storage: {exc}",
+            ) from exc
+
         if setting:
-            setting.value = value
+            setting.value = stored_value
+            setting.is_encrypted = is_encrypted
         else:
-            setting = DbSettings(key=key, value=value)
+            setting = DbSettings(key=key, value=stored_value, is_encrypted=is_encrypted)
             db.add(setting)
     
     await db.commit()
@@ -193,7 +206,7 @@ async def check_ips_batch_threat_intel(
 
 
 @router.post("/cache/clear")
-async def clear_threat_intel_cache():
+async def clear_threat_intel_cache(_: None = Depends(require_admin_access)):
     """清除威胁情报缓存"""
     threat_intel_service.clear_cache()
     return {"message": "缓存已清除"}
@@ -219,7 +232,7 @@ async def enrich_pcap_with_threat_intel(
     # 获取 PCAP 中的唯一 IP
     result = await db.execute(
         select(Connection.src_ip, Connection.dst_ip)
-        .where(Connection.pcap_id == pcap_id)
+        .where(Connection.pcap_file_id == pcap_id)
     )
     
     ips = set()

@@ -1,0 +1,167 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - "netviz/**"
+      - ".github/workflows/ci.yml"
+      - "README.md"
+      - "SECURITY.md"
+      - "LICENSE"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "netviz/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20.19.0"
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: netviz/backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            netviz/backend/pyproject.toml
+            netviz/backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+          pip install pip-audit
+
+      - name: Run backend tests
+        run: python -m pytest -q
+
+      - name: Audit backend dependencies
+        run: python -m pip_audit
+
+  frontend-check:
+    name: Frontend Lint, Type Check, and Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: netviz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: netviz/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+  tauri-build:
+    name: Build Desktop (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    needs: [backend-test, frontend-check]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: appimage,deb
+          - os: windows-latest
+            bundles: nsis
+          - os: macos-latest
+            bundles: dmg,app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: netviz/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            netviz/backend/pyproject.toml
+            netviz/backend/requirements-dev.txt
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Determine host target triple
+        id: target
+        shell: bash
+        run: |
+          echo "triple=$(rustc -vV | awk '/host:/ { print $2 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Install frontend dependencies
+        working-directory: netviz
+        run: npm ci
+
+      - name: Install backend build dependencies
+        working-directory: netviz/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev] pyinstaller
+
+      - name: Build backend sidecar
+        working-directory: netviz
+        run: python scripts/build_backend_sidecar.py --target "${{ steps.target.outputs.triple }}"
+
+      - name: Verify staged sidecar
+        shell: bash
+        run: ls -la "netviz/src-tauri/binaries"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: netviz
+          args: --target ${{ steps.target.outputs.triple }} --bundles ${{ matrix.bundles }}
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: netviz-${{ steps.target.outputs.triple }}
+          path: netviz/src-tauri/target/${{ steps.target.outputs.triple }}/release/bundle/**/*
+          if-no-files-found: error
+          retention-days: 14
