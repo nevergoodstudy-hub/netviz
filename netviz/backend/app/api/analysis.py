@@ -11,11 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_access import require_admin_access
 from app.core.database import get_db
 from app.models.analysis import Alert, AlertType
 from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, PcapFile
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 
 class ProtocolStats(BaseModel):
@@ -122,7 +123,7 @@ async def get_protocol_distribution(
 @router.get("/time-series/{pcap_id}", response_model=list[TimeSeriesPoint])
 async def get_time_series(
     pcap_id: int,
-    interval: int = Query(default=60, description="时间间隔（秒）"),
+    interval: int = Query(default=60, ge=1, description="时间间隔（秒）"),
     db: AsyncSession = Depends(get_db),
 ):
     """获取时间序列数据"""

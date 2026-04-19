@@ -15,12 +15,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_access import require_admin_access
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, ParseStatus, PcapFile
 from app.services.parser.pcap_parser import PcapParser
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 PCAP_MAGIC_HEADERS = {
     b"\xd4\xc3\xb2\xa1",  # Little-endian microsecond PCAP
@@ -417,8 +418,13 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
             await db.commit()
 
         except Exception as e:
+            await db.rollback()
+            pcap_file = await db.get(PcapFile, pcap_id)
+            if not pcap_file:
+                raise
             pcap_file.status = ParseStatus.FAILED.value
             pcap_file.error_message = str(e)
+            pcap_file.parse_progress = 0.0
             await db.commit()
             raise
 
@@ -628,7 +634,7 @@ async def get_protocol_stats(pcap_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/{pcap_id}/stats/timeline")
 async def get_timeline_stats(
     pcap_id: int,
-    interval: int = Query(60, description="时间间隔(秒)"),
+    interval: int = Query(60, ge=1, description="时间间隔(秒)"),
     db: AsyncSession = Depends(get_db),
 ):
     """获取时间线统计"""

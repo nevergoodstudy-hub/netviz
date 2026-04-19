@@ -18,13 +18,16 @@
   },
   "scripts": {
     "sync:backend-config": "node ./scripts/sync-backend-endpoint.mjs",
-    "dev": "npm run sync:backend-config && vite",
-    "build": "npm run sync:backend-config && tsc && vite build",
+    "build:sidecar": "node ./scripts/build-backend-sidecar.mjs",
+    "dev:frontend": "npm run sync:backend-config && vite",
+    "dev": "npm run dev:frontend",
+    "build:web": "npm run sync:backend-config && tsc && vite build",
+    "build": "npm run build:web",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "npm run build:sidecar && tauri dev",
+    "tauri:build": "npm run build:sidecar && tauri build"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

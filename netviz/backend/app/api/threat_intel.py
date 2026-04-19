@@ -17,7 +17,7 @@ from app.core.secret_store import build_settings_map, encrypt_setting_value
 from app.models.analysis import Settings as DbSettings
 from app.services.threat.threat_intel import threat_intel_service, ThreatIntelResult
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 
 # ==================== Pydantic 模型 ====================
@@ -158,6 +158,7 @@ async def configure_threat_intel(
 async def check_ip_threat_intel(
     ip: str,
     use_cache: bool = Query(default=True, description="是否使用缓存"),
+    _: None = Depends(require_admin_access),
     db: AsyncSession = Depends(get_db)
 ):
     """查询单个 IP 的威胁情报"""
@@ -176,6 +177,7 @@ async def check_ip_threat_intel(
 @router.post("/check/batch")
 async def check_ips_batch_threat_intel(
     request: ThreatIntelBatchRequest,
+    _: None = Depends(require_admin_access),
     db: AsyncSession = Depends(get_db)
 ):
     """批量查询 IP 的威胁情报"""
@@ -216,6 +218,7 @@ async def clear_threat_intel_cache(_: None = Depends(require_admin_access)):
 async def enrich_pcap_with_threat_intel(
     pcap_id: int,
     limit: int = Query(default=50, description="最多查询的 IP 数量"),
+    _: None = Depends(require_admin_access),
     db: AsyncSession = Depends(get_db)
 ):
     """为 PCAP 文件中的 IP 添加威胁情报"""

@@ -1,7 +1,8 @@
 from ipaddress import ip_address
 import secrets
+from typing import Mapping
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import Header, HTTPException, Request, WebSocket, status
 
 from app.core.config import settings
 
@@ -18,12 +19,16 @@ def _is_loopback_host(host: str | None) -> bool:
         return host.lower() == "localhost"
 
 
-async def require_admin_access(
-    request: Request,
-    admin_token: str | None = Header(default=None, alias=ADMIN_TOKEN_HEADER),
+def _has_proxy_forwarding_headers(headers: Mapping[str, str]) -> bool:
+    return bool(headers.get("x-forwarded-for") or headers.get("forwarded"))
+
+
+def _authorize_admin_access(
+    client_host: str | None,
+    headers: Mapping[str, str],
+    admin_token: str | None,
 ) -> None:
-    client_host = request.client.host if request.client else None
-    if _is_loopback_host(client_host):
+    if _is_loopback_host(client_host) and not _has_proxy_forwarding_headers(headers):
         return
 
     configured_token = settings.admin_access_token
@@ -33,5 +38,24 @@ async def require_admin_access(
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Administrative settings are only available from loopback or with a valid admin token.",
+        detail="Administrative access is only available from direct loopback requests or with a valid admin token.",
     )
+
+
+async def require_admin_access(
+    request: Request,
+    admin_token: str | None = Header(default=None, alias=ADMIN_TOKEN_HEADER),
+) -> None:
+    client_host = request.client.host if request.client else None
+    _authorize_admin_access(client_host, request.headers, admin_token)
+
+
+def websocket_has_admin_access(websocket: WebSocket) -> bool:
+    client_host = websocket.client.host if websocket.client else None
+    admin_token = websocket.headers.get(ADMIN_TOKEN_HEADER.lower())
+
+    try:
+        _authorize_admin_access(client_host, websocket.headers, admin_token)
+        return True
+    except HTTPException:
+        return False

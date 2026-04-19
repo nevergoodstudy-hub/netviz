@@ -3,9 +3,13 @@ NetViz API 端点测试
 """
 
 import pytest
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 from app.core.config import settings
 from app.core.config import Settings
+from app.core.database import get_db
+from app.models.pcap import Packet, PcapFile, ParseStatus
 import app.api.pcap as pcap_api_module
 
 
@@ -97,6 +101,82 @@ class TestPcapEndpoints:
         assert response.status_code == 400
         assert "文件过大" in response.json()["detail"]
 
+    @pytest.mark.asyncio
+    async def test_parse_failure_rolls_back_partial_packet_rows(
+        self, test_db, monkeypatch, tmp_path
+    ):
+        import app.core.database as database_module
+
+        pcap_file = PcapFile(
+            filename="broken.pcap",
+            original_filename="broken.pcap",
+            file_path=str(tmp_path / "broken.pcap"),
+            file_size=128,
+            file_hash="a" * 64,
+            status=ParseStatus.PENDING.value,
+        )
+        test_db.add(pcap_file)
+        await test_db.commit()
+        await test_db.refresh(pcap_file)
+
+        class FakeParser:
+            def __init__(self, file_path: str):
+                self.file_path = file_path
+
+            def set_progress_callback(self, callback):
+                self._callback = callback
+
+            def iter_packets(self):
+                yield SimpleNamespace(
+                    packet=SimpleNamespace(
+                        packet_number=1,
+                        timestamp=pcap_api_module.datetime.utcnow(),
+                        timestamp_micro=0,
+                        src_mac=None,
+                        dst_mac=None,
+                        eth_type=None,
+                        src_ip="1.1.1.1",
+                        dst_ip="2.2.2.2",
+                        ip_version=4,
+                        ttl=64,
+                        protocol="TCP",
+                        src_port=1111,
+                        dst_port=80,
+                        tcp_flags="SYN",
+                        tcp_seq=1,
+                        tcp_ack=0,
+                        app_protocol=None,
+                        length=60,
+                        payload_length=0,
+                    ),
+                    dns_record=None,
+                    http_transaction=None,
+                )
+                raise RuntimeError("broken parse")
+
+            def build_result(self):
+                raise AssertionError("build_result should not be reached")
+
+        @asynccontextmanager
+        async def fake_db_context():
+            yield test_db
+
+        monkeypatch.setattr(pcap_api_module, "PcapParser", FakeParser)
+        monkeypatch.setattr(database_module, "get_db_context", fake_db_context)
+
+        with pytest.raises(RuntimeError, match="broken parse"):
+            await pcap_api_module.parse_pcap_task(pcap_file.id, pcap_file.file_path)
+
+        await test_db.refresh(pcap_file)
+        assert pcap_file.status == ParseStatus.FAILED.value
+
+        packet_count = await test_db.scalar(
+            pcap_api_module.select(pcap_api_module.func.count(Packet.id)).where(
+                Packet.pcap_file_id == pcap_file.id
+            )
+        )
+        assert packet_count == 0
+
 
 class TestCaptureEndpoints:
     """网络捕获端点测试"""
@@ -120,6 +200,11 @@ class TestAnalysisEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
+
+    @pytest.mark.asyncio
+    async def test_time_series_rejects_zero_interval(self, client):
+        response = await client.get("/api/analysis/time-series/1", params={"interval": 0})
+        assert response.status_code == 422
 
 
 class TestSettingsEndpoints:
@@ -171,3 +256,10 @@ class TestAIEndpoints:
         # 端点存在应返回以下码之一
         # 200: 成功, 400: 请求无效, 422: 验证错误, 500: AI 未配置
         assert response.status_code in [200, 400, 422, 500]
+
+
+class TestPcapTimelineValidation:
+    @pytest.mark.asyncio
+    async def test_pcap_timeline_rejects_zero_interval(self, client):
+        response = await client.get("/api/pcap/1/stats/timeline", params={"interval": 0})
+        assert response.status_code == 422

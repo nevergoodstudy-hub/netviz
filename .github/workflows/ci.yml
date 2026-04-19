@@ -146,7 +146,7 @@ jobs:
 
       - name: Build backend sidecar
         working-directory: netviz
-        run: python scripts/build_backend_sidecar.py --target "${{ steps.target.outputs.triple }}"
+        run: npm run build:sidecar -- --target "${{ steps.target.outputs.triple }}"
 
       - name: Verify staged sidecar
         shell: bash

@@ -54,6 +54,17 @@ class TestSettingsSecurity:
         assert response.status_code == 403
 
     @pytest.mark.asyncio
+    async def test_remote_data_plane_routes_require_admin_access(self, remote_client):
+        for path in (
+            "/api/pcap/list",
+            "/api/analysis/alerts",
+            "/api/capture/interfaces",
+            "/api/ai/providers",
+        ):
+            response = await remote_client.get(path)
+            assert response.status_code == 403
+
+    @pytest.mark.asyncio
     async def test_rejects_private_cloud_ai_base_url_without_unsafe_opt_in(self, client):
         response = await client.post(
             "/api/settings/ai-providers",
@@ -125,6 +136,20 @@ class TestSettingsSecurity:
         assert status_response.json()["configured"] is True
 
     @pytest.mark.asyncio
+    async def test_remote_threat_intel_query_routes_require_admin_access(self, remote_client):
+        check_response = await remote_client.get("/api/threat-intel/check/1.1.1.1")
+        assert check_response.status_code == 403
+
+        batch_response = await remote_client.post(
+            "/api/threat-intel/check/batch",
+            json={"ips": ["1.1.1.1"]},
+        )
+        assert batch_response.status_code == 403
+
+        enrich_response = await remote_client.get("/api/threat-intel/enrich/pcap/1")
+        assert enrich_response.status_code == 403
+
+    @pytest.mark.asyncio
     async def test_sensitive_settings_use_generated_install_key_when_env_key_missing(
         self, monkeypatch, tmp_path
     ):
@@ -178,3 +203,14 @@ class TestSettingsSecurity:
     def test_ai_base_url_helper_rejects_loopback_cloud_hosts(self):
         with pytest.raises(ValueError):
             normalize_ai_base_url("deepseek", "https://127.0.0.1:8443")
+
+    @pytest.mark.asyncio
+    async def test_loopback_requests_with_forwarded_headers_require_admin_token(
+        self, client
+    ):
+        response = await client.get(
+            "/api/settings/",
+            headers={"X-Forwarded-For": "198.51.100.10"},
+        )
+
+        assert response.status_code == 403

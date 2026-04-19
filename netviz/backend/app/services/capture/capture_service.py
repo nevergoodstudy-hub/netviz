@@ -12,9 +12,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from scapy.utils import PcapWriter
 from scapy.all import (
     sniff,
-    wrpcap,
     get_if_list,
     conf,
     IP,
@@ -191,8 +191,12 @@ class CaptureService:
 
         def _capture_thread():
             """抓包线程"""
+            writer: PcapWriter | None = None
             try:
                 logger.info(f"开始抓包: 接口={interface}, 过滤器={filter_expr}")
+                if output_file:
+                    output_file.parent.mkdir(parents=True, exist_ok=True)
+                    writer = PcapWriter(str(output_file), append=False, sync=True)
 
                 def packet_handler(pkt):
                     if session._stop_event.is_set():
@@ -200,6 +204,9 @@ class CaptureService:
 
                     session.packet_count += 1
                     session.byte_count += len(pkt)
+
+                    if writer:
+                        writer.write(pkt)
 
                     # 解析数据包基本信息
                     pkt_info = self._parse_packet(pkt, session.packet_count)
@@ -222,23 +229,30 @@ class CaptureService:
 
                     return False
 
-                # 开始抓包
-                packets = sniff(
-                    iface=interface,
-                    filter=filter_expr,
-                    prn=packet_handler,
-                    stop_filter=lambda _: session._stop_event.is_set(),
-                    store=True if output_file else False,
-                )
+                # 使用短超时轮询，确保空闲接口也能及时响应停止事件。
+                while not session._stop_event.is_set():
+                    sniff(
+                        iface=interface,
+                        filter=filter_expr,
+                        prn=packet_handler,
+                        stop_filter=lambda _: (
+                            session._stop_event.is_set()
+                            or (max_packets > 0 and session.packet_count >= max_packets)
+                        ),
+                        store=False,
+                        timeout=1,
+                    )
 
-                # 保存到文件
-                if output_file and packets:
-                    wrpcap(str(output_file), packets)
+                    if max_packets > 0 and session.packet_count >= max_packets:
+                        break
+                if output_file:
                     logger.info(f"数据包已保存到: {output_file}")
 
             except Exception as e:
                 logger.error(f"抓包错误: {e}")
             finally:
+                if writer:
+                    writer.close()
                 session.is_running = False
                 logger.info(f"抓包结束: 共 {session.packet_count} 个数据包")
 

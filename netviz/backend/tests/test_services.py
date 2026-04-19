@@ -57,6 +57,68 @@ class TestCaptureService:
         
         assert len(service.sessions) == 0
 
+    def test_capture_save_to_file_streams_packets_without_buffering_all_packets(
+        self, monkeypatch, tmp_path
+    ):
+        """测试保存抓包文件时按包流式写盘，避免将完整捕获保存在内存中。"""
+        import importlib
+
+        capture_module = importlib.import_module("app.services.capture.capture_service")
+
+        service = capture_module.CaptureService()
+        output_file = tmp_path / "capture.pcap"
+        observed: dict[str, object] = {}
+        written_packets: list[object] = []
+
+        class FakeWriter:
+            def __init__(self, path: str, append: bool = False, sync: bool = False):
+                observed["writer_path"] = path
+                observed["append"] = append
+                observed["sync"] = sync
+                observed["closed"] = False
+
+            def write(self, packet: object) -> None:
+                written_packets.append(packet)
+
+            def close(self) -> None:
+                observed["closed"] = True
+
+        class FakePacket:
+            def __len__(self) -> int:
+                return 64
+
+        packets = [FakePacket(), FakePacket()]
+
+        def fake_sniff(*, iface, filter, prn, stop_filter, store, timeout):
+            observed["store"] = store
+            observed["timeout"] = timeout
+            for packet in packets:
+                prn(packet)
+            return ["should-not-be-buffered"]
+
+        monkeypatch.setattr(capture_module, "PcapWriter", FakeWriter)
+        monkeypatch.setattr(capture_module, "sniff", fake_sniff)
+        monkeypatch.setattr(service, "_parse_packet", lambda pkt, index: {"index": index})
+
+        session = service.start_capture(
+            session_id="stream01",
+            interface="lo0",
+            output_file=output_file,
+            max_packets=2,
+        )
+        assert session._thread is not None
+        session._thread.join(timeout=5)
+
+        assert observed["store"] is False
+        assert observed["writer_path"] == str(output_file)
+        assert observed["append"] is False
+        assert observed["sync"] is True
+        assert observed["timeout"] == 1
+        assert observed["closed"] is True
+        assert written_packets == packets
+        assert session.packet_count == 2
+        assert session.is_running is False
+
 
 class TestAIService:
     """AI 服务测试"""
@@ -89,6 +151,28 @@ class TestAIService:
         service = OpenAIService(api_key="test-key", model="gpt-4")
         assert service.model == "gpt-4"
         assert service.api_key == "test-key"
+
+
+class TestWebSocketService:
+    @pytest.mark.asyncio
+    async def test_connection_manager_uses_unique_connection_ids_for_duplicate_labels(self):
+        from app.api.websocket import ConnectionManager
+
+        manager = ConnectionManager()
+        first_socket = AsyncMock()
+        second_socket = AsyncMock()
+
+        first_id = await manager.connect(first_socket, "shared-client")
+        second_id = await manager.connect(second_socket, "shared-client")
+
+        assert first_id != second_id
+
+        manager.subscribe(first_id, "topic:test")
+        manager.subscribe(second_id, "topic:test")
+        manager.disconnect(first_id)
+
+        assert second_id in manager.active_connections
+        assert second_id in manager.subscriptions["topic:test"]
 
 
 class TestAlertDetection:

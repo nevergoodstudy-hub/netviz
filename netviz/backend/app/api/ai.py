@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_access import require_admin_access
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.secret_store import build_settings_map
@@ -20,7 +21,7 @@ from app.models.pcap import Connection, Packet, PcapFile
 from app.services.ai.ai_service import AIService, get_ai_service
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 
 # ============== Schemas ==============

@@ -7,13 +7,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
 
+from app.core.admin_access import require_admin_access
 from app.core.config import settings
 from app.services.capture.capture_service import capture_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_access)])
 
 
 # ==================== Pydantic 模型 ====================

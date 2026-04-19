@@ -52,7 +52,7 @@ python -m venv .venv
 npm run tauri:dev
 ```
 
-Tauri 桌面壳会自动拉起 `netviz-backend` sidecar，并按 [`config/backend-endpoint.json`](config/backend-endpoint.json) 中的地址轮询健康检查。
+`npm run tauri:dev` 会先自动构建并暂存 `netviz-backend` sidecar，然后再启动桌面壳，并按 [`config/backend-endpoint.json`](config/backend-endpoint.json) 中的地址轮询健康检查。
 
 或运行已构建的应用：
 ```powershell
@@ -91,12 +91,18 @@ npm run tauri:build
 
 输出位置：`src-tauri/target/release/`
 
-默认会为当前系统生成原生安装包；如需调试前端 sourcemap，可临时设置 `NETVIZ_BUILD_SOURCEMAPS=1`。
+默认会为当前系统生成原生安装包，并自动先构建后端 sidecar；如需调试前端 sourcemap，可临时设置 `NETVIZ_BUILD_SOURCEMAPS=1`。
 
 ### 打包后端（可选，用于独立分发）
 
 ```powershell
 .\scripts\build-backend.ps1
+```
+
+如果你直接通过 Python 构建 sidecar，也可以使用：
+
+```bash
+npm run build:sidecar
 ```
 
 ## 配置
