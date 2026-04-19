@@ -153,7 +153,7 @@ jobs:
         run: ls -la "netviz/src-tauri/binaries"
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         with:
           projectPath: netviz
           args: --target ${{ steps.target.outputs.triple }} --bundles ${{ matrix.bundles }}
