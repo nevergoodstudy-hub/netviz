@@ -79,6 +79,7 @@ npm run dev
 - Ubuntu 后端测试与依赖审计
 - Ubuntu 前端 lint / type-check / 生产依赖审计
 - Windows、Linux、macOS 的 Tauri 桌面构建
+- 相关 Pull Request 也会执行桌面构建矩阵，尽早发现 sidecar / 打包回归
 
 ## 构建发布版本
 
@@ -89,6 +90,8 @@ npm run tauri:build
 ```
 
 输出位置：`src-tauri/target/release/`
+
+默认会为当前系统生成原生安装包；如需调试前端 sourcemap，可临时设置 `NETVIZ_BUILD_SOURCEMAPS=1`。
 
 ### 打包后端（可选，用于独立分发）
 
@@ -124,6 +127,12 @@ Windows 系统需要安装 [Npcap](https://npcap.com/) 驱动。
 
 - 推荐通过 `SETTINGS_ENCRYPTION_KEY` 提供专用加密密钥。
 - 如果没有设置该环境变量，NetViz 会在数据目录中自动生成一个安装级密钥文件，而不会再回退到共享默认密钥。
+- 桌面打包环境下，数据库、上传目录、日志和自动生成密钥会写入当前用户可写的应用数据目录，而不是安装目录旁边。
+
+### AI 提供商自定义地址
+
+- OpenAI / DeepSeek 默认只接受官方 HTTPS API 地址，避免把云端 API Key 发送到恶意或内网主机。
+- 只有在你明确设置 `ALLOW_UNSAFE_AI_BASE_URLS=true` 时，才允许自定义公共 HTTPS 端点。
 
 ## 技术栈
 

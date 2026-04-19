@@ -3,11 +3,11 @@
  * 处理桌面应用和 Web 应用之间的差异
  */
 
-// 检测是否在 Tauri 环境中运行
+import { invoke, isTauri as detectTauri } from '@tauri-apps/api/core'
 import { desktopBackendApiBaseUrl, desktopBackendOrigin, desktopBackendWsUrl } from './backendConfig'
 
 export const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window
+  return detectTauri()
 }
 
 // 获取 API 基础 URL
@@ -35,7 +35,6 @@ export const invokeTauri = async <T>(cmd: string, args?: Record<string, unknown>
   if (!isTauri()) return null
   
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
     return await invoke<T>(cmd, args)
   } catch (error) {
     console.error(`Failed to invoke Tauri command ${cmd}:`, error)

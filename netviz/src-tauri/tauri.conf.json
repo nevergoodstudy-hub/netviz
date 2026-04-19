@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "NetViz - PCAP 可视化分析平台",
@@ -29,9 +29,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,7 +47,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true
+      "open": false
     }
   }
 }

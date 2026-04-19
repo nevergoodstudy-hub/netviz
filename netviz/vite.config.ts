@@ -38,7 +38,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: process.env.NETVIZ_BUILD_SOURCEMAPS === '1' ? 'hidden' : false,
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {

@@ -9,10 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.admin_access import require_admin_access
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.provider_urls import normalize_ai_base_url
 from app.core.secret_store import build_settings_map, encrypt_setting_value
 from app.models.analysis import Settings
 
 router = APIRouter()
+BASE_URL_SETTING_TO_PROVIDER = {
+    "openai_base_url": "openai",
+    "ollama_base_url": "ollama",
+    "deepseek_base_url": "deepseek",
+}
 
 
 class SettingsUpdate(BaseModel):
@@ -51,8 +57,19 @@ async def update_setting(
 ):
     result = await db.execute(select(Settings).where(Settings.key == update.key))
     setting = result.scalar_one_or_none()
+    value = update.value
+    if update.key in BASE_URL_SETTING_TO_PROVIDER:
+        provider = BASE_URL_SETTING_TO_PROVIDER[update.key]
+        try:
+            value = normalize_ai_base_url(
+                provider,
+                update.value,
+                allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        stored_value, is_encrypted = encrypt_setting_value(update.key, update.value)
+        stored_value, is_encrypted = encrypt_setting_value(update.key, value)
     except OSError as exc:
         raise HTTPException(status_code=503, detail=f"Unable to secure setting storage: {exc}") from exc
 
@@ -136,7 +153,15 @@ async def configure_ai_provider(
         if config.api_key:
             updates.append(("openai_api_key", config.api_key))
         if config.base_url:
-            updates.append(("openai_base_url", config.base_url))
+            try:
+                normalized_base_url = normalize_ai_base_url(
+                    "openai",
+                    config.base_url,
+                    allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            updates.append(("openai_base_url", normalized_base_url))
         if config.model:
             updates.append(("openai_model", config.model))
     elif config.provider == "anthropic":
@@ -146,14 +171,26 @@ async def configure_ai_provider(
             updates.append(("anthropic_model", config.model))
     elif config.provider == "ollama":
         if config.base_url:
-            updates.append(("ollama_base_url", config.base_url))
+            try:
+                normalized_base_url = normalize_ai_base_url("ollama", config.base_url)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            updates.append(("ollama_base_url", normalized_base_url))
         if config.model:
             updates.append(("ollama_model", config.model))
     elif config.provider == "deepseek":
         if config.api_key:
             updates.append(("deepseek_api_key", config.api_key))
         if config.base_url:
-            updates.append(("deepseek_base_url", config.base_url))
+            try:
+                normalized_base_url = normalize_ai_base_url(
+                    "deepseek",
+                    config.base_url,
+                    allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            updates.append(("deepseek_base_url", normalized_base_url))
         if config.model:
             updates.append(("deepseek_model", config.model))
     else:
@@ -198,7 +235,11 @@ async def test_ai_provider(
             base_url = (
                 db_settings.get("openai_base_url")
                 or settings.openai_base_url
-                or "https://api.openai.com/v1"
+            )
+            base_url = normalize_ai_base_url(
+                "openai",
+                base_url,
+                allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
             )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -243,7 +284,10 @@ async def test_ai_provider(
                 }
 
         if provider == "ollama":
-            base_url = db_settings.get("ollama_base_url") or settings.ollama_base_url
+            base_url = normalize_ai_base_url(
+                "ollama",
+                db_settings.get("ollama_base_url") or settings.ollama_base_url,
+            )
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
@@ -270,7 +314,11 @@ async def test_ai_provider(
             if not api_key:
                 raise HTTPException(status_code=400, detail="DeepSeek API key is not configured")
 
-            base_url = db_settings.get("deepseek_base_url") or settings.deepseek_base_url
+            base_url = normalize_ai_base_url(
+                "deepseek",
+                db_settings.get("deepseek_base_url") or settings.deepseek_base_url,
+                allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(

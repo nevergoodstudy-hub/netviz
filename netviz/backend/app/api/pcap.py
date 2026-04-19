@@ -5,19 +5,20 @@ NetViz PCAP 文件操作 API
 import hashlib
 import json
 import uuid
+from asyncio import sleep
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, ParseStatus, PcapFile
-from app.services.parser.pcap_parser import parse_pcap_async
+from app.services.parser.pcap_parser import PcapParser
 
 router = APIRouter()
 
@@ -145,6 +146,7 @@ class TopTalkersResponse(BaseModel):
 
 # 使用内存存储解析进度（单机版足够）
 parse_progress: dict[int, float] = {}
+PACKET_INSERT_BATCH_SIZE = 1000
 
 
 def update_progress(pcap_id: int, progress: float) -> None:
@@ -239,15 +241,68 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
         await db.commit()
 
         try:
-            # 解析文件
-            result = await parse_pcap_async(
-                file_path,
-                progress_callback=lambda p: update_progress(pcap_id, p),
-                store_packets=True,
-            )
+            parser = PcapParser(file_path)
+            parser.set_progress_callback(lambda p: update_progress(pcap_id, p))
+            pending_packet_rows: list[dict[str, Any]] = []
+            pending_dns_rows: list[dict[str, Any]] = []
+            pending_http_rows: list[dict[str, Any]] = []
+
+            for event in parser.iter_packets():
+                pkt_info = event.packet
+                pending_packet_rows.append(
+                    {
+                        "pcap_file_id": pcap_id,
+                        "packet_number": pkt_info.packet_number,
+                        "timestamp": pkt_info.timestamp,
+                        "timestamp_micro": pkt_info.timestamp_micro,
+                        "src_mac": pkt_info.src_mac,
+                        "dst_mac": pkt_info.dst_mac,
+                        "eth_type": pkt_info.eth_type,
+                        "src_ip": pkt_info.src_ip,
+                        "dst_ip": pkt_info.dst_ip,
+                        "ip_version": pkt_info.ip_version,
+                        "ttl": pkt_info.ttl,
+                        "protocol": pkt_info.protocol,
+                        "src_port": pkt_info.src_port,
+                        "dst_port": pkt_info.dst_port,
+                        "tcp_flags": pkt_info.tcp_flags,
+                        "tcp_seq": pkt_info.tcp_seq,
+                        "tcp_ack": pkt_info.tcp_ack,
+                        "app_protocol": pkt_info.app_protocol,
+                        "length": pkt_info.length,
+                        "payload_length": pkt_info.payload_length,
+                    }
+                )
+
+                if event.dns_record:
+                    pending_dns_rows.append(event.dns_record)
+
+                if event.http_transaction:
+                    pending_http_rows.append(
+                        {
+                            **event.http_transaction,
+                            "connection_key": (
+                                pkt_info.src_ip,
+                                pkt_info.dst_ip,
+                                pkt_info.src_port,
+                                pkt_info.dst_port,
+                                pkt_info.protocol,
+                            ),
+                        }
+                    )
+
+                if len(pending_packet_rows) >= PACKET_INSERT_BATCH_SIZE:
+                    await _flush_packet_rows(db, pcap_id, pending_packet_rows, pending_dns_rows)
+                    pending_packet_rows.clear()
+                    pending_dns_rows.clear()
+                    await sleep(0)
+
+            await _flush_packet_rows(db, pcap_id, pending_packet_rows, pending_dns_rows)
+            result = parser.build_result()
 
             # 更新 PCAP 文件信息
             pcap_file.status = ParseStatus.COMPLETED.value
+            pcap_file.error_message = None
             pcap_file.parse_progress = 100.0
             pcap_file.total_packets = result.total_packets
             pcap_file.total_bytes = result.total_bytes
@@ -255,159 +310,109 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
             pcap_file.end_time = result.end_time
             pcap_file.duration_seconds = result.duration_seconds
 
-            # 批量插入数据包
-            packet_entities: list[Packet] = []
-            for pkt_info in result.packets:
-                packet = Packet(
-                    pcap_file_id=pcap_id,
-                    packet_number=pkt_info.packet_number,
-                    timestamp=pkt_info.timestamp,
-                    timestamp_micro=pkt_info.timestamp_micro,
-                    src_mac=pkt_info.src_mac,
-                    dst_mac=pkt_info.dst_mac,
-                    eth_type=pkt_info.eth_type,
-                    src_ip=pkt_info.src_ip,
-                    dst_ip=pkt_info.dst_ip,
-                    ip_version=pkt_info.ip_version,
-                    ttl=pkt_info.ttl,
-                    protocol=pkt_info.protocol,
-                    src_port=pkt_info.src_port,
-                    dst_port=pkt_info.dst_port,
-                    tcp_flags=pkt_info.tcp_flags,
-                    tcp_seq=pkt_info.tcp_seq,
-                    tcp_ack=pkt_info.tcp_ack,
-                    app_protocol=pkt_info.app_protocol,
-                    length=pkt_info.length,
-                    payload_length=pkt_info.payload_length,
-                )
-                db.add(packet)
-                packet_entities.append(packet)
-
-            await db.flush()
-            packet_id_by_number = {
-                packet.packet_number: packet.id for packet in packet_entities
-            }
-            packet_by_number = {
-                packet.packet_number: packet for packet in packet_entities
-            }
-
-            # 批量插入连接
-            connection_entities: list[Connection] = []
+            connection_rows: list[dict[str, Any]] = []
             for conn_info in result.connections.values():
                 if conn_info.src_ip:
-                    conn = Connection(
-                        pcap_file_id=pcap_id,
-                        src_ip=conn_info.src_ip,
-                        dst_ip=conn_info.dst_ip,
-                        src_port=conn_info.src_port,
-                        dst_port=conn_info.dst_port,
-                        protocol=conn_info.protocol,
-                        packet_count=conn_info.packet_count,
-                        byte_count=conn_info.byte_count,
-                        src_to_dst_packets=conn_info.src_to_dst_packets,
-                        dst_to_src_packets=conn_info.dst_to_src_packets,
-                        src_to_dst_bytes=conn_info.src_to_dst_bytes,
-                        dst_to_src_bytes=conn_info.dst_to_src_bytes,
-                        start_time=conn_info.start_time,
-                        end_time=conn_info.end_time,
-                        duration_seconds=(conn_info.end_time - conn_info.start_time).total_seconds()
-                        if conn_info.start_time and conn_info.end_time
-                        else 0,
-                        app_protocol=conn_info.app_protocol,
-                        is_encrypted=conn_info.is_encrypted,
+                    connection_rows.append(
+                        {
+                            "pcap_file_id": pcap_id,
+                            "src_ip": conn_info.src_ip,
+                            "dst_ip": conn_info.dst_ip,
+                            "src_port": conn_info.src_port,
+                            "dst_port": conn_info.dst_port,
+                            "protocol": conn_info.protocol,
+                            "packet_count": conn_info.packet_count,
+                            "byte_count": conn_info.byte_count,
+                            "src_to_dst_packets": conn_info.src_to_dst_packets,
+                            "dst_to_src_packets": conn_info.dst_to_src_packets,
+                            "src_to_dst_bytes": conn_info.src_to_dst_bytes,
+                            "dst_to_src_bytes": conn_info.dst_to_src_bytes,
+                            "start_time": conn_info.start_time,
+                            "end_time": conn_info.end_time,
+                            "duration_seconds": (
+                                (conn_info.end_time - conn_info.start_time).total_seconds()
+                                if conn_info.start_time and conn_info.end_time
+                                else 0
+                            ),
+                            "app_protocol": conn_info.app_protocol,
+                            "is_encrypted": conn_info.is_encrypted,
+                        }
                     )
-                    db.add(conn)
-                    connection_entities.append(conn)
 
-            await db.flush()
-            connection_id_by_key = {
-                (
-                    conn.src_ip,
-                    conn.dst_ip,
-                    conn.src_port,
-                    conn.dst_port,
-                    conn.protocol,
-                ): conn.id
-                for conn in connection_entities
-            }
-
-            for dns_record in result.dns_records:
-                packet_id = packet_id_by_number.get(dns_record["packet_number"])
-                if not packet_id:
-                    continue
-
-                db.add(
-                    DnsRecord(
-                        pcap_file_id=pcap_id,
-                        packet_id=packet_id,
-                        query_id=dns_record["query_id"],
-                        is_response=dns_record["is_response"],
-                        domain=dns_record["domain"].rstrip("."),
-                        query_type=dns_record["query_type"] or "UNKNOWN",
-                        response_code=dns_record["response_code"],
-                        answers=(
-                            json.dumps(dns_record["answers"], ensure_ascii=False)
-                            if dns_record["answers"]
-                            else None
-                        ),
-                        timestamp=dns_record["timestamp"],
-                    )
+            connection_id_by_key: dict[tuple[str, str, int | None, int | None, str], int] = {}
+            if connection_rows:
+                inserted_connections = await db.execute(
+                    insert(Connection).returning(
+                        Connection.id,
+                        Connection.src_ip,
+                        Connection.dst_ip,
+                        Connection.src_port,
+                        Connection.dst_port,
+                        Connection.protocol,
+                    ),
+                    connection_rows,
                 )
+                connection_id_by_key = {
+                    (
+                        row.src_ip,
+                        row.dst_ip,
+                        row.src_port,
+                        row.dst_port,
+                        row.protocol,
+                    ): row.id
+                    for row in inserted_connections
+                }
 
-            for http_data in result.http_transactions:
-                packet = packet_by_number.get(http_data["packet_number"])
+            http_rows_to_insert: list[dict[str, Any]] = []
+            for http_data in pending_http_rows:
+                connection_key = http_data.pop("connection_key")
                 connection_id = None
-                if packet and packet.src_ip and packet.dst_ip and packet.protocol:
-                    connection_id = connection_id_by_key.get(
-                        (
-                            packet.src_ip,
-                            packet.dst_ip,
-                            packet.src_port,
-                            packet.dst_port,
-                            packet.protocol,
-                        )
-                    )
+                if all(connection_key[:2]) and connection_key[4]:
+                    connection_id = connection_id_by_key.get(connection_key)
 
                 if http_data["type"] == "request":
-                    db.add(
-                        HttpTransaction(
-                            pcap_file_id=pcap_id,
-                            connection_id=connection_id,
-                            method=http_data.get("method") or "UNKNOWN",
-                            host=http_data.get("host") or "",
-                            uri=http_data.get("uri") or "/",
-                            user_agent=http_data.get("user_agent"),
-                            content_type=None,
-                            request_headers=None,
-                            status_code=None,
-                            response_content_type=None,
-                            response_headers=None,
-                            request_time=http_data["timestamp"],
-                            response_time=None,
-                            request_size=0,
-                            response_size=0,
-                        )
+                    http_rows_to_insert.append(
+                        {
+                            "pcap_file_id": pcap_id,
+                            "connection_id": connection_id,
+                            "method": http_data.get("method") or "UNKNOWN",
+                            "host": http_data.get("host") or "",
+                            "uri": http_data.get("uri") or "/",
+                            "user_agent": http_data.get("user_agent"),
+                            "content_type": None,
+                            "request_headers": None,
+                            "status_code": None,
+                            "response_content_type": None,
+                            "response_headers": None,
+                            "request_time": http_data["timestamp"],
+                            "response_time": None,
+                            "request_size": 0,
+                            "response_size": 0,
+                        }
                     )
                 else:
-                    db.add(
-                        HttpTransaction(
-                            pcap_file_id=pcap_id,
-                            connection_id=connection_id,
-                            method="RESPONSE",
-                            host="",
-                            uri="/",
-                            user_agent=None,
-                            content_type=None,
-                            request_headers=None,
-                            status_code=http_data.get("status_code"),
-                            response_content_type=http_data.get("content_type"),
-                            response_headers=None,
-                            request_time=http_data["timestamp"],
-                            response_time=http_data["timestamp"],
-                            request_size=0,
-                            response_size=0,
-                        )
+                    http_rows_to_insert.append(
+                        {
+                            "pcap_file_id": pcap_id,
+                            "connection_id": connection_id,
+                            "method": "RESPONSE",
+                            "host": "",
+                            "uri": "/",
+                            "user_agent": None,
+                            "content_type": None,
+                            "request_headers": None,
+                            "status_code": http_data.get("status_code"),
+                            "response_content_type": http_data.get("content_type"),
+                            "response_headers": None,
+                            "request_time": http_data["timestamp"],
+                            "response_time": http_data["timestamp"],
+                            "request_size": 0,
+                            "response_size": 0,
+                        }
                     )
+
+            if http_rows_to_insert:
+                await db.execute(insert(HttpTransaction), http_rows_to_insert)
 
             await db.commit()
 
@@ -416,6 +421,49 @@ async def parse_pcap_task(pcap_id: int, file_path: str) -> None:
             pcap_file.error_message = str(e)
             await db.commit()
             raise
+
+
+async def _flush_packet_rows(
+    db: AsyncSession,
+    pcap_id: int,
+    packet_rows: list[dict[str, Any]],
+    dns_rows: list[dict[str, Any]],
+) -> None:
+    if not packet_rows:
+        return
+
+    inserted_packets = await db.execute(
+        insert(Packet).returning(Packet.id, Packet.packet_number),
+        packet_rows,
+    )
+    packet_id_by_number = {row.packet_number: row.id for row in inserted_packets}
+
+    dns_rows_to_insert: list[dict[str, Any]] = []
+    for dns_record in dns_rows:
+        packet_id = packet_id_by_number.get(dns_record["packet_number"])
+        if not packet_id:
+            continue
+
+        dns_rows_to_insert.append(
+            {
+                "pcap_file_id": pcap_id,
+                "packet_id": packet_id,
+                "query_id": dns_record["query_id"],
+                "is_response": dns_record["is_response"],
+                "domain": dns_record["domain"].rstrip("."),
+                "query_type": dns_record["query_type"] or "UNKNOWN",
+                "response_code": dns_record["response_code"],
+                "answers": (
+                    json.dumps(dns_record["answers"], ensure_ascii=False)
+                    if dns_record["answers"]
+                    else None
+                ),
+                "timestamp": dns_record["timestamp"],
+            }
+        )
+
+    if dns_rows_to_insert:
+        await db.execute(insert(DnsRecord), dns_rows_to_insert)
 
 
 @router.get("/list", response_model=PcapListResponse)

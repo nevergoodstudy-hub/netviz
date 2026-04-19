@@ -13,11 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from scapy.all import DNS, IP, TCP, UDP, Ether, Raw, rdpcap
+from scapy.all import DNS, IP, TCP, UDP, Ether, Raw
 from scapy.layers.http import HTTP, HTTPRequest, HTTPResponse
 from scapy.layers.inet6 import IPv6
 from scapy.layers.tls.record import TLS
-from scapy.utils import RawPcapReader
+from scapy.utils import PcapReader
 
 logger = logging.getLogger(__name__)
 
@@ -122,12 +122,28 @@ class ParseResult:
     protocol_stats: dict[str, int] = field(default_factory=dict)
 
 
+@dataclass
+class ParseEvent:
+    """Single parsed packet event emitted during streaming parsing."""
+
+    packet: PacketInfo
+    dns_record: dict | None = None
+    http_transaction: dict | None = None
+
+
 class PcapParser:
     """PCAP 文件解析器"""
 
     def __init__(self, file_path: str | Path):
         self.file_path = Path(file_path)
         self._progress_callback: Callable[[float], None] | None = None
+        self._file_hash = ""
+        self._connections: dict[ConnectionKey, ConnectionInfo] = {}
+        self._protocol_stats: dict[str, int] = {}
+        self._total_packets = 0
+        self._total_bytes = 0
+        self._start_time: datetime | None = None
+        self._end_time: datetime | None = None
 
     def set_progress_callback(self, callback: Callable[[float], None]) -> None:
         """设置进度回调函数"""
@@ -150,11 +166,21 @@ class PcapParser:
         """快速获取包数量（用于进度计算）"""
         count = 0
         try:
-            for _ in RawPcapReader(str(self.file_path)):
-                count += 1
+            with PcapReader(str(self.file_path)) as reader:
+                for _ in reader:
+                    count += 1
         except Exception as e:
             logger.warning(f"Error counting packets: {e}")
         return count
+
+    def _reset_state(self) -> None:
+        self._file_hash = ""
+        self._connections = defaultdict(lambda: ConnectionInfo("", "", None, None, ""))
+        self._protocol_stats = defaultdict(int)
+        self._total_packets = 0
+        self._total_bytes = 0
+        self._start_time = None
+        self._end_time = None
 
     def _parse_tcp_flags(self, tcp_layer: TCP) -> str:
         """解析 TCP 标志位"""
@@ -290,184 +316,180 @@ class PcapParser:
             store_packets: 是否存储每个包的详细信息（大文件时可设为 False）
             max_packets: 最大解析包数（用于采样分析）
         """
-        logger.info(f"Starting to parse: {self.file_path}")
-
-        file_hash = self.calculate_file_hash()
-        total_packet_count = self.get_packet_count() if self._progress_callback else 0
-
         packets: list[PacketInfo] = []
-        connections: dict[ConnectionKey, ConnectionInfo] = defaultdict(
-            lambda: ConnectionInfo("", "", None, None, "")
-        )
         dns_records: list[dict] = []
         http_transactions: list[dict] = []
-        protocol_stats: dict[str, int] = defaultdict(int)
-
-        total_bytes = 0
-        start_time: datetime | None = None
-        end_time: datetime | None = None
-
-        try:
-            pcap_packets = rdpcap(str(self.file_path))
-        except Exception as e:
-            logger.error(f"Failed to read PCAP file: {e}")
-            raise ValueError(f"无法读取 PCAP 文件: {e}")
-
-        total_packets = len(pcap_packets)
-        if max_packets:
-            total_packets = min(total_packets, max_packets)
-
-        for i, packet in enumerate(pcap_packets[:max_packets] if max_packets else pcap_packets):
-            packet_number = i + 1
-
-            # 报告进度
-            if total_packet_count > 0 and packet_number % 1000 == 0:
-                self._report_progress((packet_number / total_packet_count) * 100)
-
-            # 获取时间戳
-            timestamp = datetime.fromtimestamp(float(packet.time))
-            timestamp_micro = int((float(packet.time) % 1) * 1_000_000)
-
-            if start_time is None or timestamp < start_time:
-                start_time = timestamp
-            if end_time is None or timestamp > end_time:
-                end_time = timestamp
-
-            # 创建包信息
-            pkt_info = PacketInfo(
-                packet_number=packet_number,
-                timestamp=timestamp,
-                timestamp_micro=timestamp_micro,
-                length=len(packet),
-            )
-            total_bytes += len(packet)
-
-            # 解析以太网层
-            if packet.haslayer(Ether):
-                eth = packet[Ether]
-                pkt_info.src_mac = eth.src
-                pkt_info.dst_mac = eth.dst
-                pkt_info.eth_type = eth.type
-
-            # 解析 IP 层
-            if packet.haslayer(IP):
-                ip = packet[IP]
-                pkt_info.src_ip = ip.src
-                pkt_info.dst_ip = ip.dst
-                pkt_info.ip_version = 4
-                pkt_info.ttl = ip.ttl
-            elif packet.haslayer(IPv6):
-                ip = packet[IPv6]
-                pkt_info.src_ip = ip.src
-                pkt_info.dst_ip = ip.dst
-                pkt_info.ip_version = 6
-                pkt_info.ttl = ip.hlim
-
-            # 解析传输层
-            if packet.haslayer(TCP):
-                tcp = packet[TCP]
-                pkt_info.protocol = "TCP"
-                pkt_info.src_port = tcp.sport
-                pkt_info.dst_port = tcp.dport
-                pkt_info.tcp_flags = self._parse_tcp_flags(tcp)
-                pkt_info.tcp_seq = tcp.seq
-                pkt_info.tcp_ack = tcp.ack
-                protocol_stats["TCP"] += 1
-            elif packet.haslayer(UDP):
-                udp = packet[UDP]
-                pkt_info.protocol = "UDP"
-                pkt_info.src_port = udp.sport
-                pkt_info.dst_port = udp.dport
-                protocol_stats["UDP"] += 1
-            elif pkt_info.src_ip:
-                pkt_info.protocol = "OTHER"
-                protocol_stats["OTHER"] += 1
-
-            # 检测应用层协议
-            if pkt_info.src_ip:
-                pkt_info.app_protocol = self._detect_app_protocol(
-                    packet, pkt_info.src_port, pkt_info.dst_port
-                )
-                if pkt_info.app_protocol:
-                    protocol_stats[pkt_info.app_protocol] += 1
-
-            # 解析 DNS
-            dns_record = self._parse_dns(packet, packet_number, timestamp)
-            if dns_record:
-                dns_records.append(dns_record)
-
-            # 解析 HTTP
-            http_data = self._parse_http(packet, packet_number, timestamp)
-            if http_data:
-                http_transactions.append(http_data)
-
-            # 计算 payload 长度
-            if packet.haslayer(Raw):
-                pkt_info.payload_length = len(packet[Raw].load)
-
-            # 更新连接信息
-            if pkt_info.src_ip and pkt_info.dst_ip and pkt_info.protocol:
-                conn_key = ConnectionKey(
-                    src_ip=pkt_info.src_ip,
-                    dst_ip=pkt_info.dst_ip,
-                    src_port=pkt_info.src_port,
-                    dst_port=pkt_info.dst_port,
-                    protocol=pkt_info.protocol,
-                )
-
-                conn = connections[conn_key]
-                if not conn.src_ip:
-                    conn.src_ip = pkt_info.src_ip
-                    conn.dst_ip = pkt_info.dst_ip
-                    conn.src_port = pkt_info.src_port
-                    conn.dst_port = pkt_info.dst_port
-                    conn.protocol = pkt_info.protocol
-
-                conn.packet_count += 1
-                conn.byte_count += pkt_info.length
-
-                # 判断方向
-                if pkt_info.src_ip == conn.src_ip:
-                    conn.src_to_dst_packets += 1
-                    conn.src_to_dst_bytes += pkt_info.length
-                else:
-                    conn.dst_to_src_packets += 1
-                    conn.dst_to_src_bytes += pkt_info.length
-
-                if conn.start_time is None or timestamp < conn.start_time:
-                    conn.start_time = timestamp
-                if conn.end_time is None or timestamp > conn.end_time:
-                    conn.end_time = timestamp
-
-                if pkt_info.app_protocol:
-                    conn.app_protocol = pkt_info.app_protocol
-                if pkt_info.app_protocol in ["HTTPS", "TLS"]:
-                    conn.is_encrypted = True
-
-            # 存储包信息
+        for event in self.iter_packets(max_packets=max_packets):
             if store_packets:
-                packets.append(pkt_info)
+                packets.append(event.packet)
+            if event.dns_record:
+                dns_records.append(event.dns_record)
+            if event.http_transaction:
+                http_transactions.append(event.http_transaction)
 
-        # 计算持续时间
-        duration = 0.0
-        if start_time and end_time:
-            duration = (end_time - start_time).total_seconds()
-
-        self._report_progress(100.0)
-        logger.info(f"Parsing completed: {total_packets} packets, {total_bytes} bytes")
-
-        return ParseResult(
-            file_hash=file_hash,
-            total_packets=total_packets,
-            total_bytes=total_bytes,
-            start_time=start_time,
-            end_time=end_time,
-            duration_seconds=duration,
+        return self.build_result(
             packets=packets,
-            connections=dict(connections),
             dns_records=dns_records,
             http_transactions=http_transactions,
-            protocol_stats=dict(protocol_stats),
+        )
+
+    def iter_packets(self, max_packets: int | None = None):
+        """Stream parsed packets one by one to keep memory usage bounded."""
+        logger.info(f"Starting to parse: {self.file_path}")
+        self._reset_state()
+        self._file_hash = self.calculate_file_hash()
+        total_packet_count = self.get_packet_count() if self._progress_callback else 0
+
+        try:
+            with PcapReader(str(self.file_path)) as reader:
+                for i, packet in enumerate(reader, start=1):
+                    if max_packets and i > max_packets:
+                        break
+
+                    self._total_packets = i
+
+                    if total_packet_count > 0 and i % 1000 == 0:
+                        self._report_progress((i / total_packet_count) * 100)
+
+                    timestamp = datetime.fromtimestamp(float(packet.time))
+                    timestamp_micro = int((float(packet.time) % 1) * 1_000_000)
+
+                    if self._start_time is None or timestamp < self._start_time:
+                        self._start_time = timestamp
+                    if self._end_time is None or timestamp > self._end_time:
+                        self._end_time = timestamp
+
+                    pkt_info = PacketInfo(
+                        packet_number=i,
+                        timestamp=timestamp,
+                        timestamp_micro=timestamp_micro,
+                        length=len(packet),
+                    )
+                    self._total_bytes += len(packet)
+
+                    if packet.haslayer(Ether):
+                        eth = packet[Ether]
+                        pkt_info.src_mac = eth.src
+                        pkt_info.dst_mac = eth.dst
+                        pkt_info.eth_type = eth.type
+
+                    if packet.haslayer(IP):
+                        ip = packet[IP]
+                        pkt_info.src_ip = ip.src
+                        pkt_info.dst_ip = ip.dst
+                        pkt_info.ip_version = 4
+                        pkt_info.ttl = ip.ttl
+                    elif packet.haslayer(IPv6):
+                        ip = packet[IPv6]
+                        pkt_info.src_ip = ip.src
+                        pkt_info.dst_ip = ip.dst
+                        pkt_info.ip_version = 6
+                        pkt_info.ttl = ip.hlim
+
+                    if packet.haslayer(TCP):
+                        tcp = packet[TCP]
+                        pkt_info.protocol = "TCP"
+                        pkt_info.src_port = tcp.sport
+                        pkt_info.dst_port = tcp.dport
+                        pkt_info.tcp_flags = self._parse_tcp_flags(tcp)
+                        pkt_info.tcp_seq = tcp.seq
+                        pkt_info.tcp_ack = tcp.ack
+                        self._protocol_stats["TCP"] += 1
+                    elif packet.haslayer(UDP):
+                        udp = packet[UDP]
+                        pkt_info.protocol = "UDP"
+                        pkt_info.src_port = udp.sport
+                        pkt_info.dst_port = udp.dport
+                        self._protocol_stats["UDP"] += 1
+                    elif pkt_info.src_ip:
+                        pkt_info.protocol = "OTHER"
+                        self._protocol_stats["OTHER"] += 1
+
+                    if pkt_info.src_ip:
+                        pkt_info.app_protocol = self._detect_app_protocol(
+                            packet, pkt_info.src_port, pkt_info.dst_port
+                        )
+                        if pkt_info.app_protocol:
+                            self._protocol_stats[pkt_info.app_protocol] += 1
+
+                    dns_record = self._parse_dns(packet, i, timestamp)
+                    http_data = self._parse_http(packet, i, timestamp)
+
+                    if packet.haslayer(Raw):
+                        pkt_info.payload_length = len(packet[Raw].load)
+
+                    if pkt_info.src_ip and pkt_info.dst_ip and pkt_info.protocol:
+                        conn_key = ConnectionKey(
+                            src_ip=pkt_info.src_ip,
+                            dst_ip=pkt_info.dst_ip,
+                            src_port=pkt_info.src_port,
+                            dst_port=pkt_info.dst_port,
+                            protocol=pkt_info.protocol,
+                        )
+
+                        conn = self._connections[conn_key]
+                        if not conn.src_ip:
+                            conn.src_ip = pkt_info.src_ip
+                            conn.dst_ip = pkt_info.dst_ip
+                            conn.src_port = pkt_info.src_port
+                            conn.dst_port = pkt_info.dst_port
+                            conn.protocol = pkt_info.protocol
+
+                        conn.packet_count += 1
+                        conn.byte_count += pkt_info.length
+
+                        if pkt_info.src_ip == conn.src_ip:
+                            conn.src_to_dst_packets += 1
+                            conn.src_to_dst_bytes += pkt_info.length
+                        else:
+                            conn.dst_to_src_packets += 1
+                            conn.dst_to_src_bytes += pkt_info.length
+
+                        if conn.start_time is None or timestamp < conn.start_time:
+                            conn.start_time = timestamp
+                        if conn.end_time is None or timestamp > conn.end_time:
+                            conn.end_time = timestamp
+
+                        if pkt_info.app_protocol:
+                            conn.app_protocol = pkt_info.app_protocol
+                        if pkt_info.app_protocol in ["HTTPS", "TLS"]:
+                            conn.is_encrypted = True
+
+                    yield ParseEvent(
+                        packet=pkt_info,
+                        dns_record=dns_record,
+                        http_transaction=http_data,
+                    )
+        except Exception as e:
+            logger.error(f"Failed to read PCAP file: {e}")
+            raise ValueError(f"无法读取 PCAP 文件: {e}") from e
+
+        self._report_progress(100.0)
+        logger.info(f"Parsing completed: {self._total_packets} packets, {self._total_bytes} bytes")
+
+    def build_result(
+        self,
+        *,
+        packets: list[PacketInfo] | None = None,
+        dns_records: list[dict] | None = None,
+        http_transactions: list[dict] | None = None,
+    ) -> ParseResult:
+        duration = 0.0
+        if self._start_time and self._end_time:
+            duration = (self._end_time - self._start_time).total_seconds()
+
+        return ParseResult(
+            file_hash=self._file_hash,
+            total_packets=self._total_packets,
+            total_bytes=self._total_bytes,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            duration_seconds=duration,
+            packets=packets or [],
+            connections=dict(self._connections),
+            dns_records=dns_records or [],
+            http_transactions=http_transactions or [],
+            protocol_stats=dict(self._protocol_stats),
         )
 
 

@@ -3,21 +3,32 @@ NetViz 核心配置模块
 使用 pydantic-settings 管理应用配置
 """
 
+import json
+import os
 import sys
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+
+from app.core.provider_urls import normalize_ai_base_url
 
 DEFAULT_SECRET_KEY = "netviz-secret-key-change-in-production"
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_PATH = (
+    Path(sys.executable).resolve().parent / ".env"
+    if getattr(sys, "frozen", False)
+    else BACKEND_ROOT / ".env"
+)
 
 
 class Settings(BaseSettings):
     """应用配置类"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -33,6 +44,12 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     reload: bool = True
+
+    # 运行时状态目录
+    app_data_dir: Path | None = Field(
+        default=None,
+        description="Optional writable directory for runtime state such as DB, uploads, logs, and generated keys",
+    )
 
     # 数据库配置
     database_url: str = "sqlite+aiosqlite:///./data/netviz.db"
@@ -60,6 +77,10 @@ class Settings(BaseSettings):
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    allow_unsafe_ai_base_urls: bool = Field(
+        default=False,
+        description="Allow custom public HTTPS base URLs for cloud AI providers",
+    )
 
     # 默认 AI 提供商
     default_ai_provider: Literal["openai", "anthropic", "ollama", "deepseek", "none"] = "none"
@@ -127,6 +148,22 @@ class Settings(BaseSettings):
 
         return normalized
 
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: list[str] | str) -> list[str]:
+        if isinstance(value, list):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            return []
+        if normalized.startswith("["):
+            parsed = json.loads(normalized)
+            if not isinstance(parsed, list):
+                raise ValueError("CORS_ORIGINS JSON value must be a list.")
+            return [str(origin).strip() for origin in parsed if str(origin).strip()]
+        return [origin.strip() for origin in normalized.split(",") if origin.strip()]
+
     # CORS 配置
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
@@ -140,7 +177,74 @@ class Settings(BaseSettings):
     @property
     def base_dir(self) -> Path:
         """项目根目录"""
-        return Path(__file__).parent.parent.parent
+        return BACKEND_ROOT
+
+    def model_post_init(self, __context) -> None:
+        runtime_root = self._resolve_app_data_dir()
+
+        self.app_data_dir = runtime_root
+        self.database_url = self._resolve_database_url(runtime_root)
+        self.upload_dir = self._resolve_runtime_path(runtime_root, self.upload_dir)
+        self.geoip_db_path = self._resolve_runtime_path(runtime_root, self.geoip_db_path)
+        self.geoip_asn_db_path = self._resolve_runtime_path(runtime_root, self.geoip_asn_db_path)
+        self.settings_encryption_key_file = self._resolve_runtime_path(
+            runtime_root,
+            self.settings_encryption_key_file,
+        )
+        self.log_dir = self._resolve_runtime_path(runtime_root, self.log_dir)
+        self.openai_base_url = normalize_ai_base_url(
+            "openai",
+            self.openai_base_url,
+            allow_unsafe_cloud_urls=self.allow_unsafe_ai_base_urls,
+        )
+        self.ollama_base_url = normalize_ai_base_url("ollama", self.ollama_base_url)
+        self.deepseek_base_url = normalize_ai_base_url(
+            "deepseek",
+            self.deepseek_base_url,
+            allow_unsafe_cloud_urls=self.allow_unsafe_ai_base_urls,
+        )
+
+    def _resolve_app_data_dir(self) -> Path:
+        if self.app_data_dir:
+            configured = Path(self.app_data_dir)
+            return configured if configured.is_absolute() else (self.base_dir / configured).resolve()
+
+        if not getattr(sys, "frozen", False):
+            return self.base_dir
+
+        if sys.platform == "win32":
+            root = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+            if root:
+                return (Path(root) / "NetViz").resolve()
+        elif sys.platform == "darwin":
+            return (Path.home() / "Library" / "Application Support" / "NetViz").resolve()
+
+        xdg_root = os.environ.get("XDG_DATA_HOME")
+        if xdg_root:
+            return (Path(xdg_root) / "netviz").resolve()
+        return (Path.home() / ".local" / "share" / "netviz").resolve()
+
+    def _resolve_runtime_path(self, runtime_root: Path, value: Path) -> Path:
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return (runtime_root / path).resolve()
+
+    def _resolve_database_url(self, runtime_root: Path) -> str:
+        url = make_url(self.database_url)
+        if not url.drivername.startswith("sqlite"):
+            return self.database_url
+
+        database = url.database
+        if not database or database == ":memory:":
+            return self.database_url
+
+        database_path = Path(database)
+        if database_path.is_absolute():
+            return self.database_url
+
+        resolved_database = (runtime_root / database_path).resolve()
+        return url.set(database=resolved_database.as_posix()).render_as_string(hide_password=False)
 
     def ensure_directories(self) -> None:
         """确保必要的目录存在"""

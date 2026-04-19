@@ -5,6 +5,7 @@ NetViz API 端点测试
 import pytest
 
 from app.core.config import settings
+from app.core.config import Settings
 import app.api.pcap as pcap_api_module
 
 
@@ -75,6 +76,27 @@ class TestPcapEndpoints:
         assert response.status_code == 200
         assert response.json()["original_filename"] == "capture.cap"
 
+    @pytest.mark.asyncio
+    async def test_upload_rejects_files_over_max_size(self, client, monkeypatch, tmp_path):
+        async def noop_parse_task(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
+        monkeypatch.setattr(settings, "max_upload_size", 8)
+        monkeypatch.setattr(pcap_api_module, "parse_pcap_task", noop_parse_task)
+
+        files = {
+            "file": (
+                "oversized.pcap",
+                b"\xd4\xc3\xb2\xa1" + (b"\x00" * 16),
+                "application/octet-stream",
+            )
+        }
+        response = await client.post("/api/pcap/upload", files=files)
+
+        assert response.status_code == 400
+        assert "文件过大" in response.json()["detail"]
+
 
 class TestCaptureEndpoints:
     """网络捕获端点测试"""
@@ -120,6 +142,19 @@ class TestSettingsEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, dict)
+
+    def test_settings_accept_comma_separated_cors_origins_and_runtime_state_dir(self, tmp_path):
+        runtime_settings = Settings(
+            app_data_dir=tmp_path,
+            cors_origins="http://localhost:5173,http://127.0.0.1:5173",
+        )
+
+        assert runtime_settings.cors_origins == [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+        assert tmp_path.as_posix() in runtime_settings.database_url
+        assert runtime_settings.upload_dir == (tmp_path / "data" / "uploads").resolve()
 
 
 class TestAIEndpoints:

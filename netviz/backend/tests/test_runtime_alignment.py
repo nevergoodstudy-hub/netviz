@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 import app.api.ai as ai_api_module
 import app.api.pcap as pcap_api_module
 import app.core.database as database_module
+from app.services.parser.pcap_parser import ParseEvent
 from app.core.secret_store import encrypt_setting_value
 from app.models.analysis import Alert, Settings as DbSettings
 from app.models.pcap import Connection, DnsRecord, HttpTransaction, Packet, PcapFile, ParseStatus
@@ -401,29 +402,6 @@ async def test_parse_pcap_task_persists_dns_and_http_records(test_db, monkeypatc
         start_time=now,
         end_time=now,
         duration_seconds=0.0,
-        packets=[
-            SimpleNamespace(
-                packet_number=1,
-                timestamp=now,
-                timestamp_micro=0,
-                src_mac=None,
-                dst_mac=None,
-                eth_type=None,
-                src_ip="1.1.1.1",
-                dst_ip="2.2.2.2",
-                ip_version=4,
-                ttl=64,
-                protocol="TCP",
-                src_port=1234,
-                dst_port=80,
-                tcp_flags="S",
-                tcp_seq=None,
-                tcp_ack=None,
-                app_protocol="HTTP",
-                length=512,
-                payload_length=100,
-            )
-        ],
         connections={
             "primary": SimpleNamespace(
                 src_ip="1.1.1.1",
@@ -443,39 +421,73 @@ async def test_parse_pcap_task_persists_dns_and_http_records(test_db, monkeypatc
                 is_encrypted=False,
             )
         },
-        dns_records=[
-            {
-                "packet_number": 1,
-                "timestamp": now,
-                "query_id": 1,
-                "is_response": False,
-                "domain": "example.org",
-                "query_type": "A",
-                "response_code": None,
-                "answers": [],
-            }
-        ],
-        http_transactions=[
-            {
-                "packet_number": 1,
-                "timestamp": now,
-                "type": "request",
-                "method": "GET",
-                "host": "example.org",
-                "uri": "/",
-                "user_agent": "NetVizTest",
-            }
-        ],
+        protocol_stats={"TCP": 1},
+        packets=[],
+        dns_records=[],
+        http_transactions=[],
     )
 
-    async def fake_parse_pcap_async(*args, **kwargs):
-        return fake_result
+    class FakeParser:
+        def __init__(self, *_args, **_kwargs):
+            self._callback = None
+
+        def set_progress_callback(self, callback):
+            self._callback = callback
+
+        def iter_packets(self):
+            if self._callback:
+                self._callback(100.0)
+            yield ParseEvent(
+                packet=SimpleNamespace(
+                    packet_number=1,
+                    timestamp=now,
+                    timestamp_micro=0,
+                    src_mac=None,
+                    dst_mac=None,
+                    eth_type=None,
+                    src_ip="1.1.1.1",
+                    dst_ip="2.2.2.2",
+                    ip_version=4,
+                    ttl=64,
+                    protocol="TCP",
+                    src_port=1234,
+                    dst_port=80,
+                    tcp_flags="S",
+                    tcp_seq=None,
+                    tcp_ack=None,
+                    app_protocol="HTTP",
+                    length=512,
+                    payload_length=100,
+                ),
+                dns_record={
+                    "packet_number": 1,
+                    "timestamp": now,
+                    "query_id": 1,
+                    "is_response": False,
+                    "domain": "example.org",
+                    "query_type": "A",
+                    "response_code": None,
+                    "answers": [],
+                },
+                http_transaction={
+                    "packet_number": 1,
+                    "timestamp": now,
+                    "type": "request",
+                    "method": "GET",
+                    "host": "example.org",
+                    "uri": "/",
+                    "user_agent": "NetVizTest",
+                },
+            )
+
+        def build_result(self):
+            return fake_result
 
     @asynccontextmanager
     async def fake_get_db_context():
         yield test_db
 
-    monkeypatch.setattr(pcap_api_module, "parse_pcap_async", fake_parse_pcap_async)
+    monkeypatch.setattr(pcap_api_module, "PcapParser", FakeParser)
     monkeypatch.setattr(database_module, "get_db_context", fake_get_db_context)
 
     await pcap_api_module.parse_pcap_task(pcap.id, pcap.file_path)

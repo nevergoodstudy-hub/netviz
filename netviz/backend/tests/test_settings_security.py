@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 import app.core.secret_store as secret_store_module
 from app.core.config import settings
+from app.core.provider_urls import normalize_ai_base_url
 from app.core.database import get_db
 from app.main import app
 from app.models.analysis import Settings as DbSettings
@@ -51,6 +52,19 @@ class TestSettingsSecurity:
         response = await remote_client.get("/api/settings/system-info")
 
         assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_rejects_private_cloud_ai_base_url_without_unsafe_opt_in(self, client):
+        response = await client.post(
+            "/api/settings/ai-providers",
+            json={
+                "provider": "openai",
+                "api_key": "sk-secret-1234567890",
+                "base_url": "http://127.0.0.1:8765/v1",
+            },
+        )
+
+        assert response.status_code == 400
 
     @pytest.mark.asyncio
     async def test_sensitive_settings_are_encrypted_at_rest(self, client, test_db):
@@ -160,3 +174,7 @@ class TestSettingsSecurity:
             secret_store_module.decrypt_setting_value("openai_api_key", record.value, True)
             == "sk-legacy-1234567890"
         )
+
+    def test_ai_base_url_helper_rejects_loopback_cloud_hosts(self):
+        with pytest.raises(ValueError):
+            normalize_ai_base_url("deepseek", "https://127.0.0.1:8443")

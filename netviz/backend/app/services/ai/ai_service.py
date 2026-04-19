@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.provider_urls import normalize_ai_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,11 @@ class OpenAIService(AIService):
     def __init__(self, api_key: str, model: str, base_url: str | None = None):
         super().__init__(model)
         self.api_key = api_key
-        self.base_url = base_url or "https://api.openai.com/v1"
+        self.base_url = normalize_ai_base_url(
+            "openai",
+            base_url,
+            allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+        )
 
     async def chat(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -134,7 +139,11 @@ class DeepSeekService(AIService):
     def __init__(self, api_key: str, model: str, base_url: str | None = None):
         super().__init__(model)
         self.api_key = api_key
-        self.base_url = base_url or "https://api.deepseek.com"
+        self.base_url = normalize_ai_base_url(
+            "deepseek",
+            base_url,
+            allow_unsafe_cloud_urls=settings.allow_unsafe_ai_base_urls,
+        )
 
     async def chat(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -172,7 +181,7 @@ class OllamaService(AIService):
 
     def __init__(self, base_url: str, model: str):
         super().__init__(model)
-        self.base_url = base_url.rstrip("/")
+        self.base_url = normalize_ai_base_url("ollama", base_url)
 
     async def chat(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=300.0) as client:
